@@ -13,8 +13,8 @@ This package is prepared for a Git-based Netlify deployment. It uses:
 
 ### Recommended deployment steps
 
-1. Extract this package and push the folder to a GitHub repository.
-2. In Netlify, choose **Add new project → Import an existing project** and select the repository.
+1. In Netlify, choose **Add new project → Import an existing project**.
+2. Select the GitHub repository `rob4493/Final-Voyage`.
 3. Keep the detected build command as `npm run build` and publish directory as `.next`.
 4. Open **Data & Storage → Database** and create a Netlify Database if Netlify does not provision it automatically during the first deploy.
 5. Deploy the project. Netlify applies the included migration automatically.
@@ -45,4 +45,3 @@ npm run build
 - 3–5 players
 - 6 crisis rounds
 - A voyage ends immediately if Fuel, Hull, Supplies, or Morale reaches zero
-
