@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { GamePlayers, GameRooms } from "../../../db/schema";
 import { Agendas, Crises, agendaComplete, type ResourceKey } from "../../../lib/game-data";
@@ -64,6 +64,20 @@ async function state(RoomCode: string, PlayerId: string) {
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    if (url.searchParams.get("Public") === "true") {
+      const db = getDb();
+      const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const rooms = await db.select().from(GameRooms).where(and(eq(GameRooms.IsPublic, true), eq(GameRooms.Phase, "Lobby"), gt(GameRooms.UpdatedAt, cutoff))).orderBy(desc(GameRooms.UpdatedAt)).limit(20);
+      const lobbies = [];
+      for (const room of rooms) {
+        const players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+        if (players.length >= 5) continue;
+        const host = players.find((player) => player.PlayerId === room.HostPlayerId);
+        if (!host) continue;
+        lobbies.push({ RoomCode: room.RoomCode, HostName: host.PlayerName, PlayerCount: players.length, UpdatedAt: room.UpdatedAt });
+      }
+      return Response.json({ Lobbies: lobbies });
+    }
     const RoomCode = (url.searchParams.get("RoomCode") ?? "").toUpperCase();
     const PlayerId = url.searchParams.get("PlayerId") ?? "";
     const game = await state(RoomCode, PlayerId);
@@ -75,7 +89,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number };
+    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number; IsPublic?: boolean };
     const Action = body.Action ?? "";
     const PlayerName = (body.PlayerName ?? "").trim().slice(0, 20);
     const RoomCode = (body.RoomCode ?? "").trim().toUpperCase();
@@ -93,7 +107,7 @@ export async function POST(request: Request) {
         NewCode = code();
       }
       const now = new Date();
-      await db.insert(GameRooms).values({ RoomId, RoomCode: NewCode, HostPlayerId: NewPlayerId, CreatedAt: now, UpdatedAt: now });
+      await db.insert(GameRooms).values({ RoomId, RoomCode: NewCode, HostPlayerId: NewPlayerId, IsPublic: body.IsPublic === true, CreatedAt: now, UpdatedAt: now });
       await db.insert(GamePlayers).values({ PlayerId: NewPlayerId, RoomId, PlayerName, JoinedAt: now, LastSeenAt: now });
       return Response.json({ RoomCode: NewCode, PlayerId: NewPlayerId }, { status: 201 });
     }
@@ -109,6 +123,7 @@ export async function POST(request: Request) {
       const NewPlayerId = crypto.randomUUID();
       const now = new Date();
       await db.insert(GamePlayers).values({ PlayerId: NewPlayerId, RoomId: room.RoomId, PlayerName, JoinedAt: now, LastSeenAt: now });
+      await db.update(GameRooms).set({ UpdatedAt: now, Version: room.Version + 1 }).where(eq(GameRooms.RoomId, room.RoomId));
       return Response.json({ RoomCode, PlayerId: NewPlayerId }, { status: 201 });
     }
 

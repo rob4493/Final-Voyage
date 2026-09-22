@@ -2,6 +2,8 @@
 
 Final Voyage is a live cooperative strategy game for 3–5 players. Each player joins from a phone or computer with a room code, votes through six ship crises, and pursues a private resource-based agenda.
 
+Players can create private rooms for friends, host discoverable public rooms, browse open crews, or use Quick Join to enter an available public lobby.
+
 ## Netlify deployment
 
 This package is prepared for a Git-based Netlify deployment. It uses:

@@ -1,15 +1,16 @@
-import { integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const GameRooms = pgTable("GameRooms", {
   RoomId: text("RoomId").primaryKey(), RoomCode: text("RoomCode").notNull(),
   HostPlayerId: text("HostPlayerId").notNull(), Phase: text("Phase").notNull().default("Lobby"),
+  IsPublic: boolean("IsPublic").notNull().default(false),
   RoundNumber: integer("RoundNumber").notNull().default(0), CrisisOrder: text("CrisisOrder").notNull().default("[]"),
   CurrentCrisisId: integer("CurrentCrisisId"), WinningOption: integer("WinningOption"), ResultText: text("ResultText"),
   Fuel: integer("Fuel").notNull().default(6), Hull: integer("Hull").notNull().default(6),
   Supplies: integer("Supplies").notNull().default(6), Morale: integer("Morale").notNull().default(6),
   Version: integer("Version").notNull().default(0),
   CreatedAt: timestamp("CreatedAt", { withTimezone: true }).notNull(), UpdatedAt: timestamp("UpdatedAt", { withTimezone: true }).notNull(),
-}, (table) => [uniqueIndex("idx_GameRooms_RoomCode").on(table.RoomCode)]);
+}, (table) => [uniqueIndex("idx_GameRooms_RoomCode").on(table.RoomCode), index("idx_GameRooms_PublicLobby").on(table.IsPublic, table.Phase, table.UpdatedAt)]);
 
 export const GamePlayers = pgTable("GamePlayers", {
   PlayerId: text("PlayerId").primaryKey(), RoomId: text("RoomId").notNull(), PlayerName: text("PlayerName").notNull(),
