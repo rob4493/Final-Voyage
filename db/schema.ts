@@ -18,3 +18,10 @@ export const GamePlayers = pgTable("GamePlayers", {
   MajorityVotes: integer("MajorityVotes").notNull().default(0), MinorityVotes: integer("MinorityVotes").notNull().default(0),
   JoinedAt: timestamp("JoinedAt", { withTimezone: true }).notNull(), LastSeenAt: timestamp("LastSeenAt", { withTimezone: true }).notNull(),
 }, (table) => [uniqueIndex("idx_GamePlayers_RoomName").on(table.RoomId, table.PlayerName)]);
+
+export const GameMessages = pgTable("GameMessages", {
+  GameMessageId: text("GameMessageId").primaryKey(), RoomId: text("RoomId").notNull(),
+  PlayerId: text("PlayerId"), PlayerName: text("PlayerName").notNull(),
+  MessageText: text("MessageText").notNull(), MessageType: text("MessageType").notNull().default("Player"),
+  CreatedAt: timestamp("CreatedAt", { withTimezone: true }).notNull(),
+}, (table) => [index("idx_GameMessages_RoomCreated").on(table.RoomId, table.CreatedAt)]);

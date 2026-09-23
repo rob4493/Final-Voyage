@@ -1,10 +1,21 @@
 import { and, desc, eq, gt, isNotNull } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { GamePlayers, GameRooms } from "../../../db/schema";
+import { GameMessages, GamePlayers, GameRooms } from "../../../db/schema";
 import { Agendas, Crises, agendaComplete, type ResourceKey } from "../../../lib/game-data";
 
 export const dynamic = "force-dynamic";
 const resourceKeys: ResourceKey[] = ["Fuel", "Hull", "Supplies", "Morale"];
+const MESSAGE_LIMIT = 500;
+const MESSAGE_COOLDOWN_MS = 1500;
+const blockedWords = ["fuck", "shit", "bitch", "cunt", "nigger", "faggot"];
+
+function filterMessage(message: string) {
+  return blockedWords.reduce((clean, word) => clean.replace(new RegExp(`\\b${word}\\b`, "gi"), "*".repeat(word.length)), message);
+}
+
+async function addSystemMessage(db: ReturnType<typeof getDb>, RoomId: string, MessageText: string) {
+  await db.insert(GameMessages).values({ GameMessageId: crypto.randomUUID(), RoomId, PlayerName: "Ship Computer", MessageText, MessageType: "System", CreatedAt: new Date() });
+}
 
 function code() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -50,6 +61,7 @@ async function state(RoomCode: string, PlayerId: string) {
   const crisis = Crises.find((item) => item.Id === room.CurrentCrisisId) ?? null;
   const ended = room.Phase === "GameOver";
   const resourceState = { Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale };
+  const recentMessages = await db.select().from(GameMessages).where(eq(GameMessages.RoomId, room.RoomId)).orderBy(desc(GameMessages.CreatedAt)).limit(50);
   return {
     Room: { RoomCode: room.RoomCode, Phase: room.Phase, RoundNumber: room.RoundNumber, Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale, WinningOption: room.WinningOption, ResultText: room.ResultText, Version: room.Version },
     Me: { PlayerId: me.PlayerId, PlayerName: me.PlayerName, IsHost: room.HostPlayerId === me.PlayerId, HasVoted: me.CurrentVote !== null, Vote: me.CurrentVote, Agenda: me.AgendaId === null ? null : Agendas[me.AgendaId] },
@@ -58,6 +70,7 @@ async function state(RoomCode: string, PlayerId: string) {
       ...(ended ? { Agenda: p.AgendaId === null ? null : Agendas[p.AgendaId], AgendaComplete: agendaComplete(p.AgendaId, resourceState), Score: (resourceKeys.every((k) => resourceState[k] > 0) ? 10 : 0) + (agendaComplete(p.AgendaId, resourceState) ? 5 : 0) + resourceKeys.filter((k) => resourceState[k] > 0).length } : {}),
     })),
     Crisis: crisis,
+    Messages: recentMessages.reverse().map((message) => ({ GameMessageId: message.GameMessageId, PlayerId: message.PlayerId, PlayerName: message.PlayerName, MessageText: message.MessageText, MessageType: message.MessageType, CreatedAt: message.CreatedAt })),
   };
 }
 
@@ -89,7 +102,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number; IsPublic?: boolean };
+    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number; IsPublic?: boolean; MessageText?: string };
     const Action = body.Action ?? "";
     const PlayerName = (body.PlayerName ?? "").trim().slice(0, 20);
     const RoomCode = (body.RoomCode ?? "").trim().toUpperCase();
@@ -123,6 +136,7 @@ export async function POST(request: Request) {
       const NewPlayerId = crypto.randomUUID();
       const now = new Date();
       await db.insert(GamePlayers).values({ PlayerId: NewPlayerId, RoomId: room.RoomId, PlayerName, JoinedAt: now, LastSeenAt: now });
+      await addSystemMessage(db, room.RoomId, `${PlayerName} joined the crew.`);
       await db.update(GameRooms).set({ UpdatedAt: now, Version: room.Version + 1 }).where(eq(GameRooms.RoomId, room.RoomId));
       return Response.json({ RoomCode, PlayerId: NewPlayerId }, { status: 201 });
     }
@@ -133,6 +147,18 @@ export async function POST(request: Request) {
     const me = players.find((p) => p.PlayerId === PlayerId);
     if (!me) return Response.json({ Error: "Player not found." }, { status: 404 });
     const IsHost = room.HostPlayerId === PlayerId;
+
+    if (Action === "SendMessage") {
+      const rawMessage = (body.MessageText ?? "").trim();
+      if (!rawMessage) return Response.json({ Error: "Enter a message before sending." }, { status: 400 });
+      if (rawMessage.length > MESSAGE_LIMIT) return Response.json({ Error: `Messages can be up to ${MESSAGE_LIMIT} characters.` }, { status: 400 });
+      const [latest] = await db.select().from(GameMessages).where(and(eq(GameMessages.RoomId, room.RoomId), eq(GameMessages.PlayerId, PlayerId))).orderBy(desc(GameMessages.CreatedAt)).limit(1);
+      if (latest && Date.now() - latest.CreatedAt.getTime() < MESSAGE_COOLDOWN_MS) return Response.json({ Error: "Please wait a moment before sending another message." }, { status: 429 });
+      const now = new Date();
+      await db.insert(GameMessages).values({ GameMessageId: crypto.randomUUID(), RoomId: room.RoomId, PlayerId, PlayerName: me.PlayerName, MessageText: filterMessage(rawMessage), MessageType: "Player", CreatedAt: now });
+      await db.update(GamePlayers).set({ LastSeenAt: now }).where(eq(GamePlayers.PlayerId, PlayerId));
+      return Response.json(await state(RoomCode, PlayerId));
+    }
 
     if (Action === "Start") {
       if (!IsHost) return Response.json({ Error: "Only the captain can launch." }, { status: 403 });
@@ -145,6 +171,7 @@ export async function POST(request: Request) {
         await db.update(GamePlayers).set({ AgendaId: agendaOrder[i % agendaOrder.length], CurrentVote: null, MajorityVotes: 0, MinorityVotes: 0 }).where(eq(GamePlayers.PlayerId, player.PlayerId));
       }
       await db.update(GameRooms).set({ Phase: "Voting", RoundNumber: 1, CrisisOrder: JSON.stringify(crisisOrder), CurrentCrisisId: crisisOrder[0], WinningOption: null, ResultText: null, Fuel: 6, Hull: 6, Supplies: 6, Morale: 6, Version: room.Version + 1, UpdatedAt: now }).where(eq(GameRooms.RoomId, room.RoomId));
+      await addSystemMessage(db, room.RoomId, "The voyage has launched. Good luck, crew.");
     }
 
     if (Action === "Vote") {
@@ -157,6 +184,7 @@ export async function POST(request: Request) {
 
     if (Action === "CloseLobby") {
       if (!IsHost || room.Phase !== "Lobby") return Response.json({ Error: "Only the captain can close an open lobby." }, { status: 403 });
+      await db.delete(GameMessages).where(eq(GameMessages.RoomId, room.RoomId));
       await db.delete(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
       await db.delete(GameRooms).where(eq(GameRooms.RoomId, room.RoomId));
       return Response.json({ Closed: true });
@@ -165,6 +193,7 @@ export async function POST(request: Request) {
     if (Action === "LeaveGame") {
       const remaining = players.filter((p) => p.PlayerId !== PlayerId);
       if (remaining.length === 0) {
+        await db.delete(GameMessages).where(eq(GameMessages.RoomId, room.RoomId));
         await db.delete(GamePlayers).where(eq(GamePlayers.PlayerId, PlayerId));
         await db.delete(GameRooms).where(eq(GameRooms.RoomId, room.RoomId));
         return Response.json({ Left: true });
@@ -172,6 +201,7 @@ export async function POST(request: Request) {
       const NewHostPlayerId = IsHost ? remaining.sort((a, b) => a.JoinedAt.getTime() - b.JoinedAt.getTime())[0].PlayerId : room.HostPlayerId;
       await db.delete(GamePlayers).where(eq(GamePlayers.PlayerId, PlayerId));
       await db.update(GameRooms).set({ HostPlayerId: NewHostPlayerId, Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
+      await addSystemMessage(db, room.RoomId, `${me.PlayerName} left the crew.${IsHost ? ` ${remaining.find((player) => player.PlayerId === NewHostPlayerId)?.PlayerName ?? "A crew member"} is now captain.` : ""}`);
       if (room.Phase === "Voting" && remaining.every((p) => p.CurrentVote !== null)) await resolveVotes(db, { ...room, HostPlayerId: NewHostPlayerId, Version: room.Version + 1 }, remaining);
       return Response.json({ Left: true });
     }
