@@ -14,6 +14,7 @@ export const GameRooms = pgTable("GameRooms", {
 
 export const GamePlayers = pgTable("GamePlayers", {
   PlayerId: text("PlayerId").primaryKey(), RoomId: text("RoomId").notNull(), PlayerName: text("PlayerName").notNull(),
+  IsComputer: boolean("IsComputer").notNull().default(false), ComputerRole: text("ComputerRole"),
   AgendaId: integer("AgendaId"), CurrentVote: integer("CurrentVote"),
   MajorityVotes: integer("MajorityVotes").notNull().default(0), MinorityVotes: integer("MinorityVotes").notNull().default(0),
   JoinedAt: timestamp("JoinedAt", { withTimezone: true }).notNull(), LastSeenAt: timestamp("LastSeenAt", { withTimezone: true }).notNull(),

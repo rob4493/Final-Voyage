@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { GameMessages, GamePlayers, GameRooms } from "../../../db/schema";
 import { Agendas, Crises, agendaComplete, type ResourceKey } from "../../../lib/game-data";
@@ -7,6 +7,14 @@ export const dynamic = "force-dynamic";
 const resourceKeys: ResourceKey[] = ["Fuel", "Hull", "Supplies", "Morale"];
 const MESSAGE_LIMIT = 500;
 const MESSAGE_COOLDOWN_MS = 1500;
+const COMPUTER_VOTE_DELAY_MS = 1800;
+const computerCrew = [
+  { Role: "Navigator", Name: "NOVA", AgendaId: 0, Resource: "Fuel" as ResourceKey },
+  { Role: "Engineer", Name: "AXIOM", AgendaId: 1, Resource: "Hull" as ResourceKey },
+  { Role: "Quartermaster", Name: "CARGO", AgendaId: 2, Resource: "Supplies" as ResourceKey },
+  { Role: "Counselor", Name: "ECHO", AgendaId: 3, Resource: "Morale" as ResourceKey },
+  { Role: "Wildcard", Name: "GLITCH", AgendaId: 11, Resource: null },
+] as const;
 const blockedWords = ["fuck", "shit", "bitch", "cunt", "nigger", "faggot"];
 
 function filterMessage(message: string) {
@@ -33,6 +41,22 @@ function shuffle<T>(items: T[]) {
 
 function clamp(value: number) { return Math.max(0, Math.min(10, value)); }
 
+function chooseComputerVote(room: typeof GameRooms.$inferSelect, player: typeof GamePlayers.$inferSelect) {
+  const crisis = Crises.find((item) => item.Id === room.CurrentCrisisId);
+  if (!crisis) return 0;
+  const personality = computerCrew.find((item) => item.Role === player.ComputerRole);
+  const current = { Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale };
+  const scored = crisis.Options.map((choice, Option) => {
+    const projected = resourceKeys.map((key) => clamp(current[key] + (choice.Effect[key] ?? 0)));
+    const fatalPenalty = projected.some((value) => value <= 0) ? -1000 : 0;
+    const dangerPenalty = projected.reduce((total, value) => total + (value <= 2 ? -18 : value <= 3 ? -6 : 0), 0);
+    const balanceScore = Math.min(...projected) * 4 + projected.reduce((total, value) => total + value, 0);
+    const priorityScore = personality?.Resource ? (choice.Effect[personality.Resource] ?? 0) * 7 + projected[resourceKeys.indexOf(personality.Resource)] * 2 : Math.random() * 14;
+    return { Option, Score: fatalPenalty + dangerPenalty + balanceScore + priorityScore + Math.random() * 3 };
+  });
+  return scored.sort((a, b) => b.Score - a.Score)[0].Option;
+}
+
 async function resolveVotes(db: ReturnType<typeof getDb>, room: typeof GameRooms.$inferSelect, voted: (typeof GamePlayers.$inferSelect)[]) {
   const counts = [0, 0, 0];
   voted.forEach((p) => { if (p.CurrentVote !== null) counts[p.CurrentVote]++; });
@@ -53,11 +77,23 @@ async function resolveVotes(db: ReturnType<typeof getDb>, room: typeof GameRooms
 
 async function state(RoomCode: string, PlayerId: string) {
   const db = getDb();
-  const [room] = await db.select().from(GameRooms).where(eq(GameRooms.RoomCode, RoomCode)).limit(1);
+  let [room] = await db.select().from(GameRooms).where(eq(GameRooms.RoomCode, RoomCode)).limit(1);
   if (!room) return null;
-  const players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+  let players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
   const me = players.find((p) => p.PlayerId === PlayerId);
   if (!me) return null;
+  const computersWaiting = players.filter((player) => player.IsComputer && player.CurrentVote === null);
+  if (room.Phase === "Voting" && computersWaiting.length > 0 && Date.now() - room.UpdatedAt.getTime() >= COMPUTER_VOTE_DELAY_MS) {
+    for (const computer of computersWaiting) {
+      await db.update(GamePlayers).set({ CurrentVote: chooseComputerVote(room, computer), LastSeenAt: new Date() }).where(and(eq(GamePlayers.PlayerId, computer.PlayerId), isNull(GamePlayers.CurrentVote)));
+    }
+    players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+    if (players.every((player) => player.CurrentVote !== null)) {
+      await resolveVotes(db, room, players);
+      [room] = await db.select().from(GameRooms).where(eq(GameRooms.RoomId, room.RoomId)).limit(1);
+      players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+    }
+  }
   const crisis = Crises.find((item) => item.Id === room.CurrentCrisisId) ?? null;
   const ended = room.Phase === "GameOver";
   const resourceState = { Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale };
@@ -66,7 +102,7 @@ async function state(RoomCode: string, PlayerId: string) {
     Room: { RoomCode: room.RoomCode, Phase: room.Phase, RoundNumber: room.RoundNumber, Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale, WinningOption: room.WinningOption, ResultText: room.ResultText, Version: room.Version },
     Me: { PlayerId: me.PlayerId, PlayerName: me.PlayerName, IsHost: room.HostPlayerId === me.PlayerId, HasVoted: me.CurrentVote !== null, Vote: me.CurrentVote, Agenda: me.AgendaId === null ? null : Agendas[me.AgendaId] },
     Players: players.sort((a, b) => a.JoinedAt.getTime() - b.JoinedAt.getTime()).map((p) => ({
-      PlayerId: p.PlayerId, PlayerName: p.PlayerName, IsHost: p.PlayerId === room.HostPlayerId, HasVoted: p.CurrentVote !== null,
+      PlayerId: p.PlayerId, PlayerName: p.PlayerName, IsHost: p.PlayerId === room.HostPlayerId, IsComputer: p.IsComputer, ComputerRole: p.ComputerRole, HasVoted: p.CurrentVote !== null,
       ...(ended ? { Agenda: p.AgendaId === null ? null : Agendas[p.AgendaId], AgendaComplete: agendaComplete(p.AgendaId, resourceState), Score: (resourceKeys.every((k) => resourceState[k] > 0) ? 10 : 0) + (agendaComplete(p.AgendaId, resourceState) ? 5 : 0) + resourceKeys.filter((k) => resourceState[k] > 0).length } : {}),
     })),
     Crisis: crisis,
@@ -102,7 +138,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number; IsPublic?: boolean; MessageText?: string };
+    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number; IsPublic?: boolean; MessageText?: string; ComputerRole?: string; ComputerPlayerId?: string };
     const Action = body.Action ?? "";
     const PlayerName = (body.PlayerName ?? "").trim().slice(0, 20);
     const RoomCode = (body.RoomCode ?? "").trim().toUpperCase();
@@ -148,6 +184,29 @@ export async function POST(request: Request) {
     if (!me) return Response.json({ Error: "Player not found." }, { status: 404 });
     const IsHost = room.HostPlayerId === PlayerId;
 
+    if (Action === "AddComputer") {
+      if (!IsHost || room.Phase !== "Lobby") return Response.json({ Error: "Only the captain can add AI crew before launch." }, { status: 403 });
+      if (players.length >= 5) return Response.json({ Error: "This crew is already full." }, { status: 409 });
+      const personality = computerCrew.find((item) => item.Role === body.ComputerRole);
+      if (!personality) return Response.json({ Error: "Choose a valid AI crew personality." }, { status: 400 });
+      if (players.some((player) => player.IsComputer && player.ComputerRole === personality.Role)) return Response.json({ Error: `${personality.Role} is already assigned to this crew.` }, { status: 409 });
+      const now = new Date();
+      await db.insert(GamePlayers).values({ PlayerId: crypto.randomUUID(), RoomId: room.RoomId, PlayerName: personality.Name, IsComputer: true, ComputerRole: personality.Role, JoinedAt: now, LastSeenAt: now });
+      await db.update(GameRooms).set({ UpdatedAt: now, Version: room.Version + 1 }).where(eq(GameRooms.RoomId, room.RoomId));
+      await addSystemMessage(db, room.RoomId, `${personality.Name}, the AI ${personality.Role}, joined the crew.`);
+      return Response.json(await state(RoomCode, PlayerId));
+    }
+
+    if (Action === "RemoveComputer") {
+      if (!IsHost || room.Phase !== "Lobby") return Response.json({ Error: "Only the captain can remove AI crew before launch." }, { status: 403 });
+      const computer = players.find((player) => player.PlayerId === body.ComputerPlayerId && player.IsComputer);
+      if (!computer) return Response.json({ Error: "AI crew member not found." }, { status: 404 });
+      await db.delete(GamePlayers).where(eq(GamePlayers.PlayerId, computer.PlayerId));
+      await db.update(GameRooms).set({ UpdatedAt: new Date(), Version: room.Version + 1 }).where(eq(GameRooms.RoomId, room.RoomId));
+      await addSystemMessage(db, room.RoomId, `${computer.PlayerName} was removed from the crew.`);
+      return Response.json(await state(RoomCode, PlayerId));
+    }
+
     if (Action === "SendMessage") {
       const rawMessage = (body.MessageText ?? "").trim();
       if (!rawMessage) return Response.json({ Error: "Enter a message before sending." }, { status: 400 });
@@ -167,8 +226,11 @@ export async function POST(request: Request) {
       const crisisOrder = shuffle(Crises.map((c) => c.Id)).slice(0, 6);
       const agendaOrder = shuffle(Agendas.map((_, i) => i));
       const now = new Date();
-      for (const [i, player] of players.entries()) {
-        await db.update(GamePlayers).set({ AgendaId: agendaOrder[i % agendaOrder.length], CurrentVote: null, MajorityVotes: 0, MinorityVotes: 0 }).where(eq(GamePlayers.PlayerId, player.PlayerId));
+      let humanAgendaIndex = 0;
+      for (const player of players) {
+        const personality = player.IsComputer ? computerCrew.find((item) => item.Role === player.ComputerRole) : null;
+        const AgendaId = personality?.AgendaId ?? agendaOrder[humanAgendaIndex++ % agendaOrder.length];
+        await db.update(GamePlayers).set({ AgendaId, CurrentVote: null, MajorityVotes: 0, MinorityVotes: 0 }).where(eq(GamePlayers.PlayerId, player.PlayerId));
       }
       await db.update(GameRooms).set({ Phase: "Voting", RoundNumber: 1, CrisisOrder: JSON.stringify(crisisOrder), CurrentCrisisId: crisisOrder[0], WinningOption: null, ResultText: null, Fuel: 6, Hull: 6, Supplies: 6, Morale: 6, Version: room.Version + 1, UpdatedAt: now }).where(eq(GameRooms.RoomId, room.RoomId));
       await addSystemMessage(db, room.RoomId, "The voyage has launched. Good luck, crew.");
@@ -177,6 +239,7 @@ export async function POST(request: Request) {
     if (Action === "Vote") {
       const Option = Number(body.Option);
       if (room.Phase !== "Voting" || ![0, 1, 2].includes(Option)) return Response.json({ Error: "That vote is not available." }, { status: 409 });
+      if (me.IsComputer) return Response.json({ Error: "AI crew votes automatically." }, { status: 403 });
       await db.update(GamePlayers).set({ CurrentVote: Option, LastSeenAt: new Date() }).where(eq(GamePlayers.PlayerId, PlayerId));
       const voted = await db.select().from(GamePlayers).where(and(eq(GamePlayers.RoomId, room.RoomId), isNotNull(GamePlayers.CurrentVote)));
       if (voted.length === players.length) await resolveVotes(db, room, voted);
@@ -192,13 +255,14 @@ export async function POST(request: Request) {
 
     if (Action === "LeaveGame") {
       const remaining = players.filter((p) => p.PlayerId !== PlayerId);
-      if (remaining.length === 0) {
+      const remainingHumans = remaining.filter((player) => !player.IsComputer);
+      if (remainingHumans.length === 0) {
         await db.delete(GameMessages).where(eq(GameMessages.RoomId, room.RoomId));
-        await db.delete(GamePlayers).where(eq(GamePlayers.PlayerId, PlayerId));
+        await db.delete(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
         await db.delete(GameRooms).where(eq(GameRooms.RoomId, room.RoomId));
         return Response.json({ Left: true });
       }
-      const NewHostPlayerId = IsHost ? remaining.sort((a, b) => a.JoinedAt.getTime() - b.JoinedAt.getTime())[0].PlayerId : room.HostPlayerId;
+      const NewHostPlayerId = IsHost ? remainingHumans.sort((a, b) => a.JoinedAt.getTime() - b.JoinedAt.getTime())[0].PlayerId : room.HostPlayerId;
       await db.delete(GamePlayers).where(eq(GamePlayers.PlayerId, PlayerId));
       await db.update(GameRooms).set({ HostPlayerId: NewHostPlayerId, Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
       await addSystemMessage(db, room.RoomId, `${me.PlayerName} left the crew.${IsHost ? ` ${remaining.find((player) => player.PlayerId === NewHostPlayerId)?.PlayerName ?? "A crew member"} is now captain.` : ""}`);
