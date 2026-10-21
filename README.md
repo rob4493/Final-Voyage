@@ -6,6 +6,8 @@ Players can create private rooms for friends, host discoverable public rooms, br
 
 Voyages include live presence indicators, a 45-second voting timer, a 30-second reconnection grace period, captain controls for disconnected players, and automatic AI replacement when a disconnected player does not return.
 
+Lobby hosts can select Easy, Standard, or Hard difficulty, allow or prohibit AI crew, and launch only after every connected human player marks themselves ready. Public lobby cards show human and AI counts, readiness, room age, open seats, difficulty, and AI policy.
+
 ## Netlify deployment
 
 This package is prepared for a Git-based Netlify deployment. It uses:
@@ -52,3 +54,5 @@ npm run build
 - Missing votes receive a survival-focused automatic vote when the 45-second timer expires
 - Disconnected players can reconnect for 30 seconds before captain intervention is enabled
 - During a voyage, players still absent after 60 seconds are replaced by AI crew
+- Easy starts each resource at 8, Standard at 6, and Hard at 5
+- Every human player must be active and ready before launch; AI crew are always ready

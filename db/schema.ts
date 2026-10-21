@@ -4,6 +4,7 @@ export const GameRooms = pgTable("GameRooms", {
   RoomId: text("RoomId").primaryKey(), RoomCode: text("RoomCode").notNull(),
   HostPlayerId: text("HostPlayerId").notNull(), Phase: text("Phase").notNull().default("Lobby"),
   IsPublic: boolean("IsPublic").notNull().default(false),
+  Difficulty: text("Difficulty").notNull().default("Standard"), AiAllowed: boolean("AiAllowed").notNull().default(true),
   RoundNumber: integer("RoundNumber").notNull().default(0), CrisisOrder: text("CrisisOrder").notNull().default("[]"),
   CurrentCrisisId: integer("CurrentCrisisId"), WinningOption: integer("WinningOption"), ResultText: text("ResultText"),
   VoteDeadlineAt: timestamp("VoteDeadlineAt", { withTimezone: true }),
@@ -16,6 +17,7 @@ export const GameRooms = pgTable("GameRooms", {
 export const GamePlayers = pgTable("GamePlayers", {
   PlayerId: text("PlayerId").primaryKey(), RoomId: text("RoomId").notNull(), PlayerName: text("PlayerName").notNull(),
   IsComputer: boolean("IsComputer").notNull().default(false), ComputerRole: text("ComputerRole"),
+  IsReady: boolean("IsReady").notNull().default(false),
   AgendaId: integer("AgendaId"), CurrentVote: integer("CurrentVote"),
   MajorityVotes: integer("MajorityVotes").notNull().default(0), MinorityVotes: integer("MinorityVotes").notNull().default(0),
   JoinedAt: timestamp("JoinedAt", { withTimezone: true }).notNull(), LastSeenAt: timestamp("LastSeenAt", { withTimezone: true }).notNull(),
