@@ -8,6 +8,7 @@ export const GameRooms = pgTable("GameRooms", {
   RoundNumber: integer("RoundNumber").notNull().default(0), CrisisOrder: text("CrisisOrder").notNull().default("[]"),
   CurrentCrisisId: integer("CurrentCrisisId"), WinningOption: integer("WinningOption"), ResultText: text("ResultText"),
   VoteDeadlineAt: timestamp("VoteDeadlineAt", { withTimezone: true }),
+  ComputerTurnAt: timestamp("ComputerTurnAt", { withTimezone: true }),
   Fuel: integer("Fuel").notNull().default(6), Hull: integer("Hull").notNull().default(6),
   Supplies: integer("Supplies").notNull().default(6), Morale: integer("Morale").notNull().default(6),
   Version: integer("Version").notNull().default(0),
@@ -29,3 +30,9 @@ export const GameMessages = pgTable("GameMessages", {
   MessageText: text("MessageText").notNull(), MessageType: text("MessageType").notNull().default("Player"),
   CreatedAt: timestamp("CreatedAt", { withTimezone: true }).notNull(),
 }, (table) => [index("idx_GameMessages_RoomCreated").on(table.RoomId, table.CreatedAt)]);
+
+export const GameReports = pgTable("GameReports", {
+  GameReportId: text("GameReportId").primaryKey(), RoomId: text("RoomId").notNull(),
+  ReporterPlayerId: text("ReporterPlayerId").notNull(), ReportedPlayerId: text("ReportedPlayerId").notNull(),
+  Reason: text("Reason").notNull(), CreatedAt: timestamp("CreatedAt", { withTimezone: true }).notNull(),
+}, (table) => [uniqueIndex("idx_GameReports_ReporterReported").on(table.RoomId, table.ReporterPlayerId, table.ReportedPlayerId), index("idx_GameReports_RoomReported").on(table.RoomId, table.ReportedPlayerId)]);

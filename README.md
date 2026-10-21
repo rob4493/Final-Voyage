@@ -8,6 +8,8 @@ Voyages include live presence indicators, a 45-second voting timer, a 30-second 
 
 Lobby hosts can select Easy, Standard, or Hard difficulty, allow or prohibit AI crew, and launch only after every connected human player marks themselves ready. Public lobby cards show human and AI counts, readiness, room age, open seats, difficulty, and AI policy.
 
+Crew chat includes timestamps, unread counts, persistent collapse preferences, device-local muting, player reports, captain removal controls, profanity filtering, duplicate-message prevention, link limits, and burst rate limiting. AI votes run through an explicit server action and post short rule-based explanations to chat.
+
 ## Netlify deployment
 
 This package is prepared for a Git-based Netlify deployment. It uses:
