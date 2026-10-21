@@ -4,6 +4,8 @@ Final Voyage is a live cooperative strategy game for 3–5 players. Each player 
 
 Players can create private rooms for friends, host discoverable public rooms, browse open crews, or use Quick Join to enter an available public lobby.
 
+Voyages include live presence indicators, a 45-second voting timer, a 30-second reconnection grace period, captain controls for disconnected players, and automatic AI replacement when a disconnected player does not return.
+
 ## Netlify deployment
 
 This package is prepared for a Git-based Netlify deployment. It uses:
@@ -47,3 +49,6 @@ npm run build
 - 3–5 players
 - 6 crisis rounds
 - A voyage ends immediately if Fuel, Hull, Supplies, or Morale reaches zero
+- Missing votes receive a survival-focused automatic vote when the 45-second timer expires
+- Disconnected players can reconnect for 30 seconds before captain intervention is enabled
+- During a voyage, players still absent after 60 seconds are replaced by AI crew

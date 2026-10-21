@@ -8,6 +8,11 @@ const resourceKeys: ResourceKey[] = ["Fuel", "Hull", "Supplies", "Morale"];
 const MESSAGE_LIMIT = 500;
 const MESSAGE_COOLDOWN_MS = 1500;
 const COMPUTER_VOTE_DELAY_MS = 1800;
+const ACTIVE_THRESHOLD_MS = 8000;
+const HOST_MANAGE_THRESHOLD_MS = 30000;
+const RECONNECT_GRACE_MS = 30000;
+const AUTO_REPLACE_MS = 60000;
+const VOTING_TIME_MS = 45000;
 const computerCrew = [
   { Role: "Navigator", Name: "NOVA", AgendaId: 0, Resource: "Fuel" as ResourceKey },
   { Role: "Engineer", Name: "AXIOM", AgendaId: 1, Resource: "Hull" as ResourceKey },
@@ -68,11 +73,27 @@ async function resolveVotes(db: ReturnType<typeof getDb>, room: typeof GameRooms
   const selected = crisis.Options[winner];
   const next = { Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale };
   resourceKeys.forEach((key) => { next[key] = clamp(next[key] + (selected.Effect[key] ?? 0)); });
-  const [claimed] = await db.update(GameRooms).set({ ...next, Phase: "Result", WinningOption: winner, ResultText: `${selected.Title} carried the vote. ${selected.Detail}`, Version: room.Version + 1, UpdatedAt: new Date() }).where(and(eq(GameRooms.RoomId, room.RoomId), eq(GameRooms.Phase, "Voting"))).returning({ RoomId: GameRooms.RoomId });
+  const [claimed] = await db.update(GameRooms).set({ ...next, Phase: "Result", WinningOption: winner, ResultText: `${selected.Title} carried the vote. ${selected.Detail}`, VoteDeadlineAt: null, Version: room.Version + 1, UpdatedAt: new Date() }).where(and(eq(GameRooms.RoomId, room.RoomId), eq(GameRooms.Phase, "Voting"))).returning({ RoomId: GameRooms.RoomId });
   if (!claimed) return;
   for (const p of voted) {
     await db.update(GamePlayers).set({ MajorityVotes: p.MajorityVotes + (p.CurrentVote === winner ? 1 : 0), MinorityVotes: p.MinorityVotes + (p.CurrentVote !== winner ? 1 : 0) }).where(eq(GamePlayers.PlayerId, p.PlayerId));
   }
+}
+
+async function replaceWithComputer(db: ReturnType<typeof getDb>, room: typeof GameRooms.$inferSelect, player: typeof GamePlayers.$inferSelect, players: (typeof GamePlayers.$inferSelect)[]) {
+  const usedNames = new Set(players.map((item) => item.PlayerName.toLowerCase()));
+  let PlayerName = "DRIFT";
+  for (let suffix = 2; usedNames.has(PlayerName.toLowerCase()); suffix++) PlayerName = `DRIFT ${suffix}`;
+  const now = new Date();
+  const replacement = { ...player, PlayerId: crypto.randomUUID(), PlayerName, IsComputer: true, ComputerRole: "Emergency", LastSeenAt: now, CurrentVote: player.CurrentVote };
+  if (room.Phase === "Voting" && replacement.CurrentVote === null) replacement.CurrentVote = chooseComputerVote(room, replacement);
+  await db.insert(GamePlayers).values({ PlayerId: replacement.PlayerId, RoomId: room.RoomId, PlayerName: replacement.PlayerName, IsComputer: true, ComputerRole: replacement.ComputerRole, AgendaId: replacement.AgendaId, CurrentVote: replacement.CurrentVote, MajorityVotes: replacement.MajorityVotes, MinorityVotes: replacement.MinorityVotes, JoinedAt: replacement.JoinedAt, LastSeenAt: now });
+  await db.delete(GamePlayers).where(eq(GamePlayers.PlayerId, player.PlayerId));
+  if (room.HostPlayerId === player.PlayerId) {
+    const nextHost = players.filter((item) => item.PlayerId !== player.PlayerId && !item.IsComputer && now.getTime() - item.LastSeenAt.getTime() < RECONNECT_GRACE_MS).sort((a, b) => a.JoinedAt.getTime() - b.JoinedAt.getTime())[0];
+    if (nextHost) await db.update(GameRooms).set({ HostPlayerId: nextHost.PlayerId, Version: room.Version + 1, UpdatedAt: now }).where(eq(GameRooms.RoomId, room.RoomId));
+  }
+  await addSystemMessage(db, room.RoomId, `${player.PlayerName} did not reconnect. ${PlayerName} has taken over as AI crew.${room.HostPlayerId === player.PlayerId ? " Captain controls were transferred." : ""}`);
 }
 
 async function state(RoomCode: string, PlayerId: string) {
@@ -81,7 +102,21 @@ async function state(RoomCode: string, PlayerId: string) {
   if (!room) return null;
   let players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
   const me = players.find((p) => p.PlayerId === PlayerId);
-  if (!me) return null;
+  if (!me || me.IsComputer) return null;
+  const now = new Date();
+  await db.update(GamePlayers).set({ LastSeenAt: now }).where(eq(GamePlayers.PlayerId, PlayerId));
+  players = players.map((player) => player.PlayerId === PlayerId ? { ...player, LastSeenAt: now } : player);
+  if (room.Phase !== "Lobby" && room.Phase !== "GameOver") {
+    const expiredPlayers = players.filter((player) => !player.IsComputer && player.PlayerId !== PlayerId && now.getTime() - player.LastSeenAt.getTime() >= AUTO_REPLACE_MS);
+    for (const expired of expiredPlayers) {
+      await replaceWithComputer(db, room, expired, players);
+      players = players.filter((player) => player.PlayerId !== expired.PlayerId);
+    }
+    if (expiredPlayers.length > 0) {
+      [room] = await db.select().from(GameRooms).where(eq(GameRooms.RoomId, room.RoomId)).limit(1);
+      players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+    }
+  }
   const computersWaiting = players.filter((player) => player.IsComputer && player.CurrentVote === null);
   if (room.Phase === "Voting" && computersWaiting.length > 0 && Date.now() - room.UpdatedAt.getTime() >= COMPUTER_VOTE_DELAY_MS) {
     for (const computer of computersWaiting) {
@@ -94,15 +129,31 @@ async function state(RoomCode: string, PlayerId: string) {
       players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
     }
   }
+  if (room.Phase === "Voting" && room.VoteDeadlineAt && now.getTime() >= room.VoteDeadlineAt.getTime()) {
+    const missingVotes = players.filter((player) => player.CurrentVote === null);
+    for (const player of missingVotes) {
+      await db.update(GamePlayers).set({ CurrentVote: chooseComputerVote(room, player) }).where(and(eq(GamePlayers.PlayerId, player.PlayerId), isNull(GamePlayers.CurrentVote)));
+    }
+    if (missingVotes.length > 0) await addSystemMessage(db, room.RoomId, `Voting time expired. The ship computer cast ${missingVotes.length} safety ${missingVotes.length === 1 ? "vote" : "votes"}.`);
+    players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+    if (players.every((player) => player.CurrentVote !== null)) {
+      await resolveVotes(db, room, players);
+      [room] = await db.select().from(GameRooms).where(eq(GameRooms.RoomId, room.RoomId)).limit(1);
+      players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+    }
+  }
   const crisis = Crises.find((item) => item.Id === room.CurrentCrisisId) ?? null;
   const ended = room.Phase === "GameOver";
   const resourceState = { Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale };
   const recentMessages = await db.select().from(GameMessages).where(eq(GameMessages.RoomId, room.RoomId)).orderBy(desc(GameMessages.CreatedAt)).limit(50);
   return {
-    Room: { RoomCode: room.RoomCode, Phase: room.Phase, RoundNumber: room.RoundNumber, Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale, WinningOption: room.WinningOption, ResultText: room.ResultText, Version: room.Version },
+    Room: { RoomCode: room.RoomCode, Phase: room.Phase, RoundNumber: room.RoundNumber, Fuel: room.Fuel, Hull: room.Hull, Supplies: room.Supplies, Morale: room.Morale, WinningOption: room.WinningOption, ResultText: room.ResultText, VoteDeadlineAt: room.VoteDeadlineAt, Version: room.Version },
     Me: { PlayerId: me.PlayerId, PlayerName: me.PlayerName, IsHost: room.HostPlayerId === me.PlayerId, HasVoted: me.CurrentVote !== null, Vote: me.CurrentVote, Agenda: me.AgendaId === null ? null : Agendas[me.AgendaId] },
     Players: players.sort((a, b) => a.JoinedAt.getTime() - b.JoinedAt.getTime()).map((p) => ({
       PlayerId: p.PlayerId, PlayerName: p.PlayerName, IsHost: p.PlayerId === room.HostPlayerId, IsComputer: p.IsComputer, ComputerRole: p.ComputerRole, HasVoted: p.CurrentVote !== null,
+      IsActive: p.IsComputer || now.getTime() - p.LastSeenAt.getTime() <= ACTIVE_THRESHOLD_MS,
+      DisconnectedSeconds: p.IsComputer ? 0 : Math.max(0, Math.floor((now.getTime() - p.LastSeenAt.getTime()) / 1000)),
+      GraceSecondsRemaining: p.IsComputer ? 0 : Math.max(0, Math.ceil((RECONNECT_GRACE_MS - (now.getTime() - p.LastSeenAt.getTime())) / 1000)),
       ...(ended ? { Agenda: p.AgendaId === null ? null : Agendas[p.AgendaId], AgendaComplete: agendaComplete(p.AgendaId, resourceState), Score: (resourceKeys.every((k) => resourceState[k] > 0) ? 10 : 0) + (agendaComplete(p.AgendaId, resourceState) ? 5 : 0) + resourceKeys.filter((k) => resourceState[k] > 0).length } : {}),
     })),
     Crisis: crisis,
@@ -138,7 +189,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number; IsPublic?: boolean; MessageText?: string; ComputerRole?: string; ComputerPlayerId?: string };
+    const body = await request.json() as { Action?: string; PlayerName?: string; RoomCode?: string; PlayerId?: string; Option?: number; IsPublic?: boolean; MessageText?: string; ComputerRole?: string; ComputerPlayerId?: string; TargetPlayerId?: string };
     const Action = body.Action ?? "";
     const PlayerName = (body.PlayerName ?? "").trim().slice(0, 20);
     const RoomCode = (body.RoomCode ?? "").trim().toUpperCase();
@@ -184,6 +235,21 @@ export async function POST(request: Request) {
     if (!me) return Response.json({ Error: "Player not found." }, { status: 404 });
     const IsHost = room.HostPlayerId === PlayerId;
 
+    if (Action === "ManageDisconnected") {
+      if (!IsHost) return Response.json({ Error: "Only the captain can manage disconnected crew." }, { status: 403 });
+      const target = players.find((player) => player.PlayerId === body.TargetPlayerId && !player.IsComputer && player.PlayerId !== PlayerId);
+      if (!target) return Response.json({ Error: "Disconnected crew member not found." }, { status: 404 });
+      if (Date.now() - target.LastSeenAt.getTime() < HOST_MANAGE_THRESHOLD_MS) return Response.json({ Error: "That player is still within the reconnection window." }, { status: 409 });
+      if (room.Phase === "Lobby") {
+        await db.delete(GamePlayers).where(eq(GamePlayers.PlayerId, target.PlayerId));
+        await db.update(GameRooms).set({ Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
+        await addSystemMessage(db, room.RoomId, `${target.PlayerName} was removed after disconnecting.`);
+      } else if (room.Phase !== "GameOver") {
+        await replaceWithComputer(db, room, target, players);
+      } else return Response.json({ Error: "The voyage has already ended." }, { status: 409 });
+      return Response.json(await state(RoomCode, PlayerId));
+    }
+
     if (Action === "AddComputer") {
       if (!IsHost || room.Phase !== "Lobby") return Response.json({ Error: "Only the captain can add AI crew before launch." }, { status: 403 });
       if (players.length >= 5) return Response.json({ Error: "This crew is already full." }, { status: 409 });
@@ -223,6 +289,7 @@ export async function POST(request: Request) {
       if (!IsHost) return Response.json({ Error: "Only the captain can launch." }, { status: 403 });
       if (room.Phase !== "Lobby") return Response.json({ Error: "The voyage has already started." }, { status: 409 });
       if (players.length < 3) return Response.json({ Error: "At least 3 crew members are required." }, { status: 400 });
+      if (players.filter((player) => player.IsComputer || Date.now() - player.LastSeenAt.getTime() <= ACTIVE_THRESHOLD_MS).length < 3) return Response.json({ Error: "At least 3 active crew members are required to launch." }, { status: 400 });
       const crisisOrder = shuffle(Crises.map((c) => c.Id)).slice(0, 6);
       const agendaOrder = shuffle(Agendas.map((_, i) => i));
       const now = new Date();
@@ -232,13 +299,14 @@ export async function POST(request: Request) {
         const AgendaId = personality?.AgendaId ?? agendaOrder[humanAgendaIndex++ % agendaOrder.length];
         await db.update(GamePlayers).set({ AgendaId, CurrentVote: null, MajorityVotes: 0, MinorityVotes: 0 }).where(eq(GamePlayers.PlayerId, player.PlayerId));
       }
-      await db.update(GameRooms).set({ Phase: "Voting", RoundNumber: 1, CrisisOrder: JSON.stringify(crisisOrder), CurrentCrisisId: crisisOrder[0], WinningOption: null, ResultText: null, Fuel: 6, Hull: 6, Supplies: 6, Morale: 6, Version: room.Version + 1, UpdatedAt: now }).where(eq(GameRooms.RoomId, room.RoomId));
+      await db.update(GameRooms).set({ Phase: "Voting", RoundNumber: 1, CrisisOrder: JSON.stringify(crisisOrder), CurrentCrisisId: crisisOrder[0], WinningOption: null, ResultText: null, VoteDeadlineAt: new Date(now.getTime() + VOTING_TIME_MS), Fuel: 6, Hull: 6, Supplies: 6, Morale: 6, Version: room.Version + 1, UpdatedAt: now }).where(eq(GameRooms.RoomId, room.RoomId));
       await addSystemMessage(db, room.RoomId, "The voyage has launched. Good luck, crew.");
     }
 
     if (Action === "Vote") {
       const Option = Number(body.Option);
       if (room.Phase !== "Voting" || ![0, 1, 2].includes(Option)) return Response.json({ Error: "That vote is not available." }, { status: 409 });
+      if (room.VoteDeadlineAt && Date.now() >= room.VoteDeadlineAt.getTime()) return Response.json({ Error: "Voting time has expired. The ship computer is finalizing the round." }, { status: 409 });
       if (me.IsComputer) return Response.json({ Error: "AI crew votes automatically." }, { status: 403 });
       await db.update(GamePlayers).set({ CurrentVote: Option, LastSeenAt: new Date() }).where(eq(GamePlayers.PlayerId, PlayerId));
       const voted = await db.select().from(GamePlayers).where(and(eq(GamePlayers.RoomId, room.RoomId), isNotNull(GamePlayers.CurrentVote)));
@@ -274,18 +342,19 @@ export async function POST(request: Request) {
       if (!IsHost || room.Phase !== "Result") return Response.json({ Error: "Only the captain can continue." }, { status: 403 });
       const failed = resourceKeys.some((key) => room[key] <= 0);
       if (failed || room.RoundNumber >= 6) {
-        await db.update(GameRooms).set({ Phase: "GameOver", Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
+        await db.update(GameRooms).set({ Phase: "GameOver", VoteDeadlineAt: null, Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
       } else {
         const order = JSON.parse(room.CrisisOrder) as number[];
         for (const player of players) await db.update(GamePlayers).set({ CurrentVote: null }).where(eq(GamePlayers.PlayerId, player.PlayerId));
-        await db.update(GameRooms).set({ Phase: "Voting", RoundNumber: room.RoundNumber + 1, CurrentCrisisId: order[room.RoundNumber], WinningOption: null, ResultText: null, Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
+        const now = new Date();
+        await db.update(GameRooms).set({ Phase: "Voting", RoundNumber: room.RoundNumber + 1, CurrentCrisisId: order[room.RoundNumber], WinningOption: null, ResultText: null, VoteDeadlineAt: new Date(now.getTime() + VOTING_TIME_MS), Version: room.Version + 1, UpdatedAt: now }).where(eq(GameRooms.RoomId, room.RoomId));
       }
     }
 
     if (Action === "Rematch") {
       if (!IsHost || room.Phase !== "GameOver") return Response.json({ Error: "Only the captain can begin a rematch." }, { status: 403 });
       for (const player of players) await db.update(GamePlayers).set({ AgendaId: null, CurrentVote: null, MajorityVotes: 0, MinorityVotes: 0 }).where(eq(GamePlayers.PlayerId, player.PlayerId));
-      await db.update(GameRooms).set({ Phase: "Lobby", RoundNumber: 0, CrisisOrder: "[]", CurrentCrisisId: null, WinningOption: null, ResultText: null, Fuel: 6, Hull: 6, Supplies: 6, Morale: 6, Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
+      await db.update(GameRooms).set({ Phase: "Lobby", RoundNumber: 0, CrisisOrder: "[]", CurrentCrisisId: null, WinningOption: null, ResultText: null, VoteDeadlineAt: null, Fuel: 6, Hull: 6, Supplies: 6, Morale: 6, Version: room.Version + 1, UpdatedAt: new Date() }).where(eq(GameRooms.RoomId, room.RoomId));
     }
 
     const game = await state(RoomCode, PlayerId);

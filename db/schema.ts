@@ -6,6 +6,7 @@ export const GameRooms = pgTable("GameRooms", {
   IsPublic: boolean("IsPublic").notNull().default(false),
   RoundNumber: integer("RoundNumber").notNull().default(0), CrisisOrder: text("CrisisOrder").notNull().default("[]"),
   CurrentCrisisId: integer("CurrentCrisisId"), WinningOption: integer("WinningOption"), ResultText: text("ResultText"),
+  VoteDeadlineAt: timestamp("VoteDeadlineAt", { withTimezone: true }),
   Fuel: integer("Fuel").notNull().default(6), Hull: integer("Hull").notNull().default(6),
   Supplies: integer("Supplies").notNull().default(6), Morale: integer("Morale").notNull().default(6),
   Version: integer("Version").notNull().default(0),
