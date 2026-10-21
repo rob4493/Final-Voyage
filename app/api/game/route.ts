@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 const resourceKeys: ResourceKey[] = ["Fuel", "Hull", "Supplies", "Morale"];
 const MESSAGE_LIMIT = 500;
 const MESSAGE_COOLDOWN_MS = 2000;
-const COMPUTER_VOTE_DELAY_MS = 1800;
+const COMPUTER_VOTE_DELAY_MS = 5000;
 const ACTIVE_THRESHOLD_MS = 8000;
 const HOST_MANAGE_THRESHOLD_MS = 30000;
 const RECONNECT_GRACE_MS = 30000;
@@ -92,6 +92,20 @@ async function resolveVotes(db: ReturnType<typeof getDb>, room: typeof GameRooms
   }
 }
 
+async function processComputerTurns(db: ReturnType<typeof getDb>, room: typeof GameRooms.$inferSelect, players: (typeof GamePlayers.$inferSelect)[]) {
+  if (room.Phase !== "Voting" || !room.ComputerTurnAt || Date.now() < room.ComputerTurnAt.getTime()) return false;
+  const computers = players.filter((player) => player.IsComputer && player.CurrentVote === null);
+  for (const computer of computers) {
+    const Option = chooseComputerVote(room, computer);
+    const [claimed] = await db.update(GamePlayers).set({ CurrentVote: Option, LastSeenAt: new Date() }).where(and(eq(GamePlayers.PlayerId, computer.PlayerId), isNull(GamePlayers.CurrentVote))).returning({ PlayerId: GamePlayers.PlayerId });
+    if (claimed) await addSystemMessage(db, room.RoomId, `${computer.PlayerName} ${explainComputerVote(room, computer, Option)}`);
+  }
+  await db.update(GameRooms).set({ ComputerTurnAt: null, Version: room.Version + 1 }).where(and(eq(GameRooms.RoomId, room.RoomId), eq(GameRooms.Phase, "Voting")));
+  const updatedPlayers = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
+  if (updatedPlayers.every((player) => player.CurrentVote !== null)) await resolveVotes(db, room, updatedPlayers);
+  return computers.length > 0;
+}
+
 async function replaceWithComputer(db: ReturnType<typeof getDb>, room: typeof GameRooms.$inferSelect, player: typeof GamePlayers.$inferSelect, players: (typeof GamePlayers.$inferSelect)[], Reason: "Disconnected" | "Removed" = "Disconnected") {
   const usedNames = new Set(players.map((item) => item.PlayerName.toLowerCase()));
   let PlayerName = "DRIFT";
@@ -128,6 +142,11 @@ async function state(RoomCode: string, PlayerId: string) {
       [room] = await db.select().from(GameRooms).where(eq(GameRooms.RoomId, room.RoomId)).limit(1);
       players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
     }
+  }
+  if (room.Phase === "Voting" && room.ComputerTurnAt && now.getTime() >= room.ComputerTurnAt.getTime()) {
+    await processComputerTurns(db, room, players);
+    [room] = await db.select().from(GameRooms).where(eq(GameRooms.RoomId, room.RoomId)).limit(1);
+    players = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
   }
   if (room.Phase === "Voting" && room.VoteDeadlineAt && now.getTime() >= room.VoteDeadlineAt.getTime()) {
     const missingVotes = players.filter((player) => player.CurrentVote === null);
@@ -243,15 +262,7 @@ export async function POST(request: Request) {
     if (Action === "ProcessComputerTurns") {
       if (room.Phase !== "Voting" || !room.ComputerTurnAt) return Response.json(await state(RoomCode, PlayerId));
       if (Date.now() < room.ComputerTurnAt.getTime()) return Response.json({ Error: "AI crew are still evaluating the crisis." }, { status: 409 });
-      const computers = players.filter((player) => player.IsComputer && player.CurrentVote === null);
-      for (const computer of computers) {
-        const Option = chooseComputerVote(room, computer);
-        const [claimed] = await db.update(GamePlayers).set({ CurrentVote: Option, LastSeenAt: new Date() }).where(and(eq(GamePlayers.PlayerId, computer.PlayerId), isNull(GamePlayers.CurrentVote))).returning({ PlayerId: GamePlayers.PlayerId });
-        if (claimed) await addSystemMessage(db, room.RoomId, `${computer.PlayerName} ${explainComputerVote(room, computer, Option)}`);
-      }
-      await db.update(GameRooms).set({ ComputerTurnAt: null, Version: room.Version + 1 }).where(eq(GameRooms.RoomId, room.RoomId));
-      const updatedPlayers = await db.select().from(GamePlayers).where(eq(GamePlayers.RoomId, room.RoomId));
-      if (updatedPlayers.every((player) => player.CurrentVote !== null)) await resolveVotes(db, room, updatedPlayers);
+      await processComputerTurns(db, room, players);
       return Response.json(await state(RoomCode, PlayerId));
     }
 
