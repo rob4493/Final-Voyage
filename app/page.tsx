@@ -1,40 +1,293 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, ChevronRight, CircleHelp, Clock3, Copy, Crown, Flag, Fuel, Globe2, Heart, MessageCircle, Package, RefreshCw, Rocket, Send, Shield, UserRoundX, Users, Volume2, VolumeX, Wifi, WifiOff, X } from "lucide-react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  AlertTriangle,
+  Bot,
+  Check,
+  ChevronRight,
+  CircleHelp,
+  Clock3,
+  Copy,
+  Crown,
+  Flag,
+  Fuel,
+  Globe2,
+  Heart,
+  MessageCircle,
+  Package,
+  RefreshCw,
+  Rocket,
+  Send,
+  Shield,
+  UserRoundX,
+  Users,
+  Volume2,
+  VolumeX,
+  Wifi,
+  WifiOff,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ShipSchematic } from "@/components/ship-schematic";
 import type { Crisis, Effect, ResourceKey } from "@/lib/game-data";
 
 type Agenda = { Title: string; Brief: string; Rule: string };
-type Player = { PlayerId: string; PlayerName: string; IsHost: boolean; IsComputer: boolean; ComputerRole: string | null; IsReady: boolean; HasVoted: boolean; IsActive: boolean; DisconnectedSeconds: number; GraceSecondsRemaining: number; ReportCount: number; HasReported: boolean; Agenda?: Agenda | null; AgendaComplete?: boolean; Score?: number };
-type PublicLobby = { RoomCode: string; HostName: string; PlayerCount: number; HumanCount: number; ComputerCount: number; ReadyHumanCount: number; OpenSeats: number; Difficulty: "Easy" | "Standard" | "Hard"; AiAllowed: boolean; AgeMinutes: number; UpdatedAt: string };
-type GameMessage = { GameMessageId: string; PlayerId: string | null; PlayerName: string; MessageText: string; MessageType: "Player" | "System"; CreatedAt: string };
+type Player = {
+  PlayerId: string;
+  PlayerName: string;
+  IsHost: boolean;
+  IsComputer: boolean;
+  ComputerRole: string | null;
+  IsReady: boolean;
+  HasVoted: boolean;
+  IsActive: boolean;
+  DisconnectedSeconds: number;
+  GraceSecondsRemaining: number;
+  ReportCount: number;
+  HasReported: boolean;
+  Agenda?: Agenda | null;
+  AgendaComplete?: boolean;
+  Score?: number;
+};
+type PublicLobby = {
+  RoomCode: string;
+  HostName: string;
+  PlayerCount: number;
+  HumanCount: number;
+  ComputerCount: number;
+  ReadyHumanCount: number;
+  OpenSeats: number;
+  Difficulty: "Easy" | "Standard" | "Hard";
+  AiAllowed: boolean;
+  AgeMinutes: number;
+  UpdatedAt: string;
+};
+type GameMessage = {
+  GameMessageId: string;
+  PlayerId: string | null;
+  PlayerName: string;
+  MessageText: string;
+  MessageType: "Player" | "System";
+  CreatedAt: string;
+};
 type GameState = {
-  Room: { RoomCode: string; Phase: "Lobby" | "Voting" | "Result" | "GameOver"; RoundNumber: number; Difficulty: "Easy" | "Standard" | "Hard"; AiAllowed: boolean; Fuel: number; Hull: number; Supplies: number; Morale: number; WinningOption: number | null; ResultText: string | null; VoteDeadlineAt: string | null; ComputerTurnAt: string | null; Version: number };
-  Me: { PlayerId: string; PlayerName: string; IsHost: boolean; IsReady: boolean; HasVoted: boolean; Vote: number | null; Agenda: Agenda | null };
-  Players: Player[]; Crisis: Crisis | null; Messages: GameMessage[];
+  Room: {
+    RoomCode: string;
+    Phase: "Lobby" | "Voting" | "Result" | "GameOver";
+    RoundNumber: number;
+    Difficulty: "Easy" | "Standard" | "Hard";
+    AiAllowed: boolean;
+    Fuel: number;
+    Hull: number;
+    Supplies: number;
+    Morale: number;
+    WinningOption: number | null;
+    ResultText: string | null;
+    VoteDeadlineAt: string | null;
+    ComputerTurnAt: string | null;
+    Version: number;
+  };
+  Me: {
+    PlayerId: string;
+    PlayerName: string;
+    IsHost: boolean;
+    IsReady: boolean;
+    HasVoted: boolean;
+    Vote: number | null;
+    Agenda: Agenda | null;
+  };
+  Players: Player[];
+  Crisis: Crisis | null;
+  Messages: GameMessage[];
 };
 
-const resources: { key: ResourceKey; label: string; Icon: typeof Fuel; color: string }[] = [
-  { key: "Fuel", label: "Fuel", Icon: Fuel, color: "#39d8ff" }, { key: "Hull", label: "Hull", Icon: Shield, color: "#76f4b2" },
-  { key: "Supplies", label: "Supplies", Icon: Package, color: "#ffb84a" }, { key: "Morale", label: "Morale", Icon: Heart, color: "#ff6f91" },
+const resources: {
+  key: ResourceKey;
+  label: string;
+  Icon: typeof Fuel;
+  color: string;
+}[] = [
+  { key: "Fuel", label: "Fuel", Icon: Fuel, color: "#e83a3f" },
+  { key: "Hull", label: "Hull", Icon: Shield, color: "#ddd7ca" },
+  { key: "Supplies", label: "Supplies", Icon: Package, color: "#e9a43a" },
+  { key: "Morale", label: "Morale", Icon: Heart, color: "#f1eee7" },
 ];
 const computerPersonalities = [
-  { Role: "Navigator", Name: "NOVA", Detail: "Protects Fuel" }, { Role: "Engineer", Name: "AXIOM", Detail: "Protects Hull" },
-  { Role: "Quartermaster", Name: "CARGO", Detail: "Protects Supplies" }, { Role: "Counselor", Name: "ECHO", Detail: "Protects Morale" },
+  { Role: "Navigator", Name: "NOVA", Detail: "Protects Fuel" },
+  { Role: "Engineer", Name: "AXIOM", Detail: "Protects Hull" },
+  { Role: "Quartermaster", Name: "CARGO", Detail: "Protects Supplies" },
+  { Role: "Counselor", Name: "ECHO", Detail: "Protects Morale" },
   { Role: "Wildcard", Name: "GLITCH", Detail: "Unpredictable balance" },
 ];
 
-function EffectList({ effect }: { effect: Effect }) { return <div className="effect-list">{Object.entries(effect).map(([key, value]) => <span className={Number(value) > 0 ? "positive" : "negative"} key={key}>{Number(value) > 0 ? "+" : ""}{value} {key}</span>)}</div>; }
-function lobbyAge(minutes: number) { return minutes < 1 ? "Just opened" : minutes === 1 ? "1 min old" : `${minutes} mins old`; }
-function messageTime(createdAt: string) { return new Date(createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
-function Brand() { return <div className="brand"><span className="brand-mark"><Rocket size={20} /></span><span><b>FINAL VOYAGE</b><small>COMMAND NETWORK</small></span></div>; }
-function Rules() { return <Dialog><DialogTrigger asChild><Button variant="ghost" className="rules-button"><CircleHelp size={17} /> How to play</Button></DialogTrigger><DialogContent className="rules-dialog"><DialogHeader><DialogTitle>Mission protocol</DialogTitle><DialogDescription>Survive six crises without letting any ship resource reach zero.</DialogDescription></DialogHeader><div className="rules-warning"><AlertTriangle size={18} /><b>If Fuel, Hull, Supplies, or Morale reaches 0, the voyage ends immediately.</b></div><div className="rules-resources"><span><Fuel size={17} /><b>Fuel</b><small>Keeps the ship moving</small></span><span><Shield size={17} /><b>Hull</b><small>Protects the ship</small></span><span><Package size={17} /><b>Supplies</b><small>Feeds and equips the crew</small></span><span><Heart size={17} /><b>Morale</b><small>Keeps the crew united</small></span></div><ol className="rules-list"><li><span>1</span><p><b>Read the crisis.</b> Every round creates a new threat with three possible responses.</p></li><li><span>2</span><p><b>Discuss your options.</b> Your private agenda may give you a reason to protect one resource.</p></li><li><span>3</span><p><b>Vote privately.</b> The majority decision changes the ship. The captain breaks tied votes.</p></li><li><span>4</span><p><b>Survive six rounds.</b> Crew survival is worth more than any private objective.</p></li></ol><p className="rules-note">Private agendas award bonus points. They never require destroying the ship.</p></DialogContent></Dialog>; }
+function EffectList({ effect }: { effect: Effect }) {
+  return (
+    <div className="effect-list">
+      {Object.entries(effect).map(([key, value]) => (
+        <span className={Number(value) > 0 ? "positive" : "negative"} key={key}>
+          {Number(value) > 0 ? "+" : ""}
+          {value} {key}
+        </span>
+      ))}
+    </div>
+  );
+}
+function lobbyAge(minutes: number) {
+  return minutes < 1
+    ? "Just opened"
+    : minutes === 1
+      ? "1 min old"
+      : `${minutes} mins old`;
+}
+function messageTime(createdAt: string) {
+  return new Date(createdAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+function Brand() {
+  return (
+    <div className="brand">
+      <span className="brand-mark">
+        <Rocket size={20} />
+      </span>
+      <span>
+        <b>FINAL VOYAGE</b>
+        <small>COOPERATIVE SPACE SURVIVAL</small>
+      </span>
+    </div>
+  );
+}
+function Rules() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" className="rules-button">
+          <CircleHelp size={17} /> How to play
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="rules-dialog">
+        <DialogHeader>
+          <DialogTitle>Mission protocol</DialogTitle>
+          <DialogDescription>
+            Survive six crises without letting any ship resource reach zero.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rules-warning">
+          <AlertTriangle size={18} />
+          <b>
+            If Fuel, Hull, Supplies, or Morale reaches 0, the voyage ends
+            immediately.
+          </b>
+        </div>
+        <div className="rules-resources">
+          <span>
+            <Fuel size={17} />
+            <b>Fuel</b>
+            <small>Keeps the ship moving</small>
+          </span>
+          <span>
+            <Shield size={17} />
+            <b>Hull</b>
+            <small>Protects the ship</small>
+          </span>
+          <span>
+            <Package size={17} />
+            <b>Supplies</b>
+            <small>Feeds and equips the crew</small>
+          </span>
+          <span>
+            <Heart size={17} />
+            <b>Morale</b>
+            <small>Keeps the crew united</small>
+          </span>
+        </div>
+        <ol className="rules-list">
+          <li>
+            <span>1</span>
+            <p>
+              <b>Read the crisis.</b> Every round creates a new threat with
+              three possible responses.
+            </p>
+          </li>
+          <li>
+            <span>2</span>
+            <p>
+              <b>Discuss your options.</b> Your private agenda may give you a
+              reason to protect one resource.
+            </p>
+          </li>
+          <li>
+            <span>3</span>
+            <p>
+              <b>Vote privately.</b> The majority decision changes the ship. The
+              captain breaks tied votes.
+            </p>
+          </li>
+          <li>
+            <span>4</span>
+            <p>
+              <b>Survive six rounds.</b> Crew survival is worth more than any
+              private objective.
+            </p>
+          </li>
+        </ol>
+        <p className="rules-note">
+          Private agendas award bonus points. They never require destroying the
+          ship.
+        </p>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-function ChatPanel({ messages, players, playerId, roomCode, isHost, sending, onSend, onReport, onRemove }: { messages: GameMessage[]; players: Player[]; playerId: string; roomCode: string; isHost: boolean; sending: boolean; onSend: (message: string) => Promise<boolean>; onReport: (targetPlayerId: string) => void; onRemove: (targetPlayerId: string) => void }) {
+function ChatPanel({
+  messages,
+  players,
+  playerId,
+  roomCode,
+  isHost,
+  sending,
+  onSend,
+  onReport,
+  onRemove,
+}: {
+  messages: GameMessage[];
+  players: Player[];
+  playerId: string;
+  roomCode: string;
+  isHost: boolean;
+  sending: boolean;
+  onSend: (message: string) => Promise<boolean>;
+  onReport: (targetPlayerId: string) => void;
+  onRemove: (targetPlayerId: string) => void;
+}) {
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(true);
   const [mutedPlayerIds, setMutedPlayerIds] = useState<string[]>([]);
@@ -43,73 +296,1300 @@ function ChatPanel({ messages, players, playerId, roomCode, isHost, sending, onS
   const previousLastMessageId = useRef(messages.at(-1)?.GameMessageId);
   const preferenceKey = `final-voyage-chat-${roomCode}-${playerId}`;
   const muteKey = `final-voyage-muted-${roomCode}-${playerId}`;
-  useEffect(() => { const timer = window.setTimeout(() => { try { setOpen(localStorage.getItem(preferenceKey) !== "closed"); setMutedPlayerIds(JSON.parse(localStorage.getItem(muteKey) ?? "[]")); } catch {} }, 0); return () => window.clearTimeout(timer); }, [preferenceKey, muteKey]);
-  useEffect(() => { const previousId = previousLastMessageId.current; const currentId = messages.at(-1)?.GameMessageId; const previousIndex = previousId ? messages.findIndex((message) => message.GameMessageId === previousId) : -1; const added = currentId && currentId !== previousId ? previousIndex >= 0 ? messages.length - previousIndex - 1 : 1 : 0; previousLastMessageId.current = currentId; const timer = window.setTimeout(() => { if (open) { setUnread(0); const feed = feedRef.current; if (feed) feed.scrollTop = feed.scrollHeight; } else if (added > 0) setUnread((count) => count + added); }, 0); return () => window.clearTimeout(timer); }, [messages, open]);
-  async function submit(event: FormEvent) { event.preventDefault(); const message = draft.trim(); if (!message || sending) return; if (await onSend(message)) setDraft(""); }
-  function toggleMute(targetPlayerId: string) { const next = mutedPlayerIds.includes(targetPlayerId) ? mutedPlayerIds.filter((id) => id !== targetPlayerId) : [...mutedPlayerIds, targetPlayerId]; setMutedPlayerIds(next); localStorage.setItem(muteKey, JSON.stringify(next)); }
-  return <details className="chat-panel panel" open={open} onToggle={(event) => { const next = event.currentTarget.open; setOpen(next); localStorage.setItem(preferenceKey, next ? "open" : "closed"); if (next) setUnread(0); }}><summary><span><MessageCircle size={17} /> CREW CHAT {unread > 0 && <b className="unread-badge">{unread > 99 ? "99+" : unread}</b>}</span><small>{messages.length ? `${messages.length} recent` : "Start the conversation"}</small></summary><div className="chat-feed" ref={feedRef} aria-live="polite">{messages.length === 0 ? <p className="chat-empty">Coordinate the voyage with your crew.</p> : messages.map((message) => { const sender = players.find((player) => player.PlayerId === message.PlayerId); const muted = Boolean(message.PlayerId && mutedPlayerIds.includes(message.PlayerId)); return message.MessageType === "System" ? <div className="system-message" key={message.GameMessageId}><span>{message.MessageText}</span><time>{messageTime(message.CreatedAt)}</time></div> : <div className={`chat-message ${message.PlayerId === playerId ? "mine" : ""} ${muted ? "muted" : ""}`} key={message.GameMessageId}><div className="message-meta"><b>{message.PlayerId === playerId ? "You" : message.PlayerName}{isHost && sender && sender.ReportCount > 0 && <em><Flag size={10} /> {sender.ReportCount}</em>}</b><time>{messageTime(message.CreatedAt)}</time>{message.PlayerId !== playerId && message.PlayerId && <span className="message-actions"><button aria-label={muted ? `Unmute ${message.PlayerName}` : `Mute ${message.PlayerName}`} title={muted ? "Unmute" : "Mute"} onClick={() => toggleMute(message.PlayerId!)}>{muted ? <Volume2 size={12} /> : <VolumeX size={12} />}</button>{sender && !sender.HasReported && <button aria-label={`Report ${message.PlayerName}`} title="Report player" onClick={() => onReport(sender.PlayerId)}><Flag size={12} /></button>}{isHost && sender && !sender.IsComputer && <button className="remove-chat-player" aria-label={`Remove ${message.PlayerName}`} title="Remove player" onClick={() => onRemove(sender.PlayerId)}><UserRoundX size={12} /></button>}</span>}</div><p>{muted ? "Message hidden from muted player." : message.MessageText}</p></div>; })}</div><form className="chat-form" onSubmit={submit}><div><Input aria-label="Crew message" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={500} placeholder="Message your crew…" /><small>{draft.length}/500</small></div><Button type="submit" disabled={sending || !draft.trim()} aria-label="Send message"><Send size={16} /></Button></form></details>;
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        setOpen(localStorage.getItem(preferenceKey) !== "closed");
+        setMutedPlayerIds(JSON.parse(localStorage.getItem(muteKey) ?? "[]"));
+      } catch {}
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [preferenceKey, muteKey]);
+  useEffect(() => {
+    const previousId = previousLastMessageId.current;
+    const currentId = messages.at(-1)?.GameMessageId;
+    const previousIndex = previousId
+      ? messages.findIndex((message) => message.GameMessageId === previousId)
+      : -1;
+    const added =
+      currentId && currentId !== previousId
+        ? previousIndex >= 0
+          ? messages.length - previousIndex - 1
+          : 1
+        : 0;
+    previousLastMessageId.current = currentId;
+    const timer = window.setTimeout(() => {
+      if (open) {
+        setUnread(0);
+        const feed = feedRef.current;
+        if (feed) feed.scrollTop = feed.scrollHeight;
+      } else if (added > 0) setUnread((count) => count + added);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [messages, open]);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const message = draft.trim();
+    if (!message || sending) return;
+    if (await onSend(message)) setDraft("");
+  }
+  function toggleMute(targetPlayerId: string) {
+    const next = mutedPlayerIds.includes(targetPlayerId)
+      ? mutedPlayerIds.filter((id) => id !== targetPlayerId)
+      : [...mutedPlayerIds, targetPlayerId];
+    setMutedPlayerIds(next);
+    localStorage.setItem(muteKey, JSON.stringify(next));
+  }
+  return (
+    <details
+      className="chat-panel panel"
+      open={open}
+      onToggle={(event) => {
+        const next = event.currentTarget.open;
+        setOpen(next);
+        localStorage.setItem(preferenceKey, next ? "open" : "closed");
+        if (next) setUnread(0);
+      }}
+    >
+      <summary>
+        <span>
+          <MessageCircle size={17} /> CREW CHAT{" "}
+          {unread > 0 && (
+            <b className="unread-badge">{unread > 99 ? "99+" : unread}</b>
+          )}
+        </span>
+        <small>
+          {messages.length
+            ? `${messages.length} recent`
+            : "Start the conversation"}
+        </small>
+      </summary>
+      <div className="chat-feed" ref={feedRef} aria-live="polite">
+        {messages.length === 0 ? (
+          <p className="chat-empty">Coordinate the voyage with your crew.</p>
+        ) : (
+          messages.map((message) => {
+            const sender = players.find(
+              (player) => player.PlayerId === message.PlayerId,
+            );
+            const muted = Boolean(
+              message.PlayerId && mutedPlayerIds.includes(message.PlayerId),
+            );
+            return message.MessageType === "System" ? (
+              <div className="system-message" key={message.GameMessageId}>
+                <span>{message.MessageText}</span>
+                <time>{messageTime(message.CreatedAt)}</time>
+              </div>
+            ) : (
+              <div
+                className={`chat-message ${message.PlayerId === playerId ? "mine" : ""} ${muted ? "muted" : ""}`}
+                key={message.GameMessageId}
+              >
+                <div className="message-meta">
+                  <b>
+                    {message.PlayerId === playerId ? "You" : message.PlayerName}
+                    {isHost && sender && sender.ReportCount > 0 && (
+                      <em>
+                        <Flag size={10} /> {sender.ReportCount}
+                      </em>
+                    )}
+                  </b>
+                  <time>{messageTime(message.CreatedAt)}</time>
+                  {message.PlayerId !== playerId && message.PlayerId && (
+                    <span className="message-actions">
+                      <button
+                        aria-label={
+                          muted
+                            ? `Unmute ${message.PlayerName}`
+                            : `Mute ${message.PlayerName}`
+                        }
+                        title={muted ? "Unmute" : "Mute"}
+                        onClick={() => toggleMute(message.PlayerId!)}
+                      >
+                        {muted ? <Volume2 size={12} /> : <VolumeX size={12} />}
+                      </button>
+                      {sender && !sender.HasReported && (
+                        <button
+                          aria-label={`Report ${message.PlayerName}`}
+                          title="Report player"
+                          onClick={() => onReport(sender.PlayerId)}
+                        >
+                          <Flag size={12} />
+                        </button>
+                      )}
+                      {isHost && sender && !sender.IsComputer && (
+                        <button
+                          className="remove-chat-player"
+                          aria-label={`Remove ${message.PlayerName}`}
+                          title="Remove player"
+                          onClick={() => onRemove(sender.PlayerId)}
+                        >
+                          <UserRoundX size={12} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <p>
+                  {muted
+                    ? "Message hidden from muted player."
+                    : message.MessageText}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <form className="chat-form" onSubmit={submit}>
+        <div>
+          <Input
+            aria-label="Crew message"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            maxLength={500}
+            placeholder="Message your crew…"
+          />
+          <small>{draft.length}/500</small>
+        </div>
+        <Button
+          type="submit"
+          disabled={sending || !draft.trim()}
+          aria-label="Send message"
+        >
+          <Send size={16} />
+        </Button>
+      </form>
+    </details>
+  );
 }
 
 export default function Home() {
-  const [name, setName] = useState(""); const [joinCode, setJoinCode] = useState("");
-  const [identity, setIdentity] = useState<{ RoomCode: string; PlayerId: string } | null>(null);
-  const [game, setGame] = useState<GameState | null>(null); const [busy, setBusy] = useState(false); const [chatBusy, setChatBusy] = useState(false); const [clockNow, setClockNow] = useState(0); const [error, setError] = useState(""); const [copied, setCopied] = useState(false); const [exitDialogOpen, setExitDialogOpen] = useState(false); const [publicLobbies, setPublicLobbies] = useState<PublicLobby[]>([]); const [publicLoading, setPublicLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [identity, setIdentity] = useState<{
+    RoomCode: string;
+    PlayerId: string;
+  } | null>(null);
+  const [game, setGame] = useState<GameState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [clockNow, setClockNow] = useState(0);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const [publicLobbies, setPublicLobbies] = useState<PublicLobby[]>([]);
+  const [publicLoading, setPublicLoading] = useState(true);
+  const [roundStartResources, setRoundStartResources] =
+    useState<Record<ResourceKey, number> | null>(null);
   const computerTurnBusy = useRef(false);
   useEffect(() => {
     const restoreIdentity = window.setTimeout(() => {
-      try { const saved = localStorage.getItem("final-voyage-player"); if (saved) setIdentity(JSON.parse(saved)); } catch {}
+      try {
+        const saved = localStorage.getItem("final-voyage-player");
+        if (saved) setIdentity(JSON.parse(saved));
+      } catch {}
     }, 0);
     return () => window.clearTimeout(restoreIdentity);
   }, []);
-  const request = useCallback(async (payload: Record<string, unknown>) => { const response = await fetch("/api/game", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok) throw new Error(data.Error ?? "Transmission failed."); return data; }, []);
-  const loadPublicLobbies = useCallback(async () => { setPublicLoading(true); try { const response = await fetch("/api/game?Public=true", { cache: "no-store" }); if (!response.ok) throw new Error(); const data = await response.json() as { Lobbies?: PublicLobby[] }; setPublicLobbies(data.Lobbies ?? []); } catch { setPublicLobbies([]); } finally { setPublicLoading(false); } }, []);
-  useEffect(() => { if (identity) return; const initialLoad = window.setTimeout(loadPublicLobbies, 0); const timer = window.setInterval(loadPublicLobbies, 5000); return () => { window.clearTimeout(initialLoad); window.clearInterval(timer); }; }, [identity, loadPublicLobbies]);
-  const refresh = useCallback(async () => { if (!identity) return; try { const response = await fetch(`/api/game?RoomCode=${identity.RoomCode}&PlayerId=${identity.PlayerId}`, { cache: "no-store" }); if (response.status === 404) { localStorage.removeItem("final-voyage-player"); setGame(null); setIdentity(null); setError("Your crew session ended or you were replaced after disconnecting."); return; } if (!response.ok) throw new Error(); setGame(await response.json()); setError(""); } catch { setError("Connection interrupted. Retrying…"); } }, [identity]);
+  const request = useCallback(async (payload: Record<string, unknown>) => {
+    const response = await fetch("/api/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.Error ?? "Transmission failed.");
+    return data;
+  }, []);
+  const loadPublicLobbies = useCallback(async () => {
+    setPublicLoading(true);
+    try {
+      const response = await fetch("/api/game?Public=true", {
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error();
+      const data = (await response.json()) as { Lobbies?: PublicLobby[] };
+      setPublicLobbies(data.Lobbies ?? []);
+    } catch {
+      setPublicLobbies([]);
+    } finally {
+      setPublicLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (identity) return;
+    const initialLoad = window.setTimeout(loadPublicLobbies, 0);
+    const timer = window.setInterval(loadPublicLobbies, 5000);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.clearInterval(timer);
+    };
+  }, [identity, loadPublicLobbies]);
+  const refresh = useCallback(async () => {
+    if (!identity) return;
+    try {
+      const response = await fetch(
+        `/api/game?RoomCode=${identity.RoomCode}&PlayerId=${identity.PlayerId}`,
+        { cache: "no-store" },
+      );
+      if (response.status === 404) {
+        localStorage.removeItem("final-voyage-player");
+        setGame(null);
+        setIdentity(null);
+        setError(
+          "Your crew session ended or you were replaced after disconnecting.",
+        );
+        return;
+      }
+      if (!response.ok) throw new Error();
+      const next = (await response.json()) as GameState;
+      if (next.Room.Phase === "Voting") {
+        setRoundStartResources({
+          Fuel: next.Room.Fuel,
+          Hull: next.Room.Hull,
+          Supplies: next.Room.Supplies,
+          Morale: next.Room.Morale,
+        });
+      }
+      setGame(next);
+      setError("");
+    } catch {
+      setError("Connection interrupted. Retrying…");
+    }
+  }, [identity]);
   useEffect(() => {
     if (!identity) return;
     const initialRefresh = window.setTimeout(refresh, 0);
     const timer = window.setInterval(refresh, 1500);
-    return () => { window.clearTimeout(initialRefresh); window.clearInterval(timer); };
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.clearInterval(timer);
+    };
   }, [identity, refresh]);
-  useEffect(() => { if (game?.Room.Phase !== "Voting") return; const timer = window.setInterval(() => setClockNow(Date.now()), 500); return () => window.clearInterval(timer); }, [game?.Room.Phase, game?.Room.VoteDeadlineAt]);
   useEffect(() => {
-    if (!identity || game?.Room.Phase !== "Voting" || !game.Room.ComputerTurnAt || !game.Players.some((player) => player.IsComputer && !player.HasVoted)) return;
-    const delay = Math.max(0, new Date(game.Room.ComputerTurnAt).getTime() - Date.now());
+    if (game?.Room.Phase !== "Voting") return;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [game?.Room.Phase, game?.Room.VoteDeadlineAt]);
+  useEffect(() => {
+    if (
+      !identity ||
+      game?.Room.Phase !== "Voting" ||
+      !game.Room.ComputerTurnAt ||
+      !game.Players.some((player) => player.IsComputer && !player.HasVoted)
+    )
+      return;
+    const delay = Math.max(
+      0,
+      new Date(game.Room.ComputerTurnAt).getTime() - Date.now(),
+    );
     const timer = window.setTimeout(async () => {
       if (computerTurnBusy.current) return;
       computerTurnBusy.current = true;
-      try { const next = await request({ Action: "ProcessComputerTurns", ...identity }); if (next?.Room) setGame(next); } catch {} finally { computerTurnBusy.current = false; }
+      try {
+        const next = await request({
+          Action: "ProcessComputerTurns",
+          ...identity,
+        });
+        if (next?.Room) setGame(next);
+      } catch {
+      } finally {
+        computerTurnBusy.current = false;
+      }
     }, delay);
     return () => window.clearTimeout(timer);
   }, [game, identity, request]);
-  async function enter(Action: "Create" | "Join", options: { RoomCode?: string; IsPublic?: boolean } = {}) { setBusy(true); setError(""); try { const result = await request({ Action, PlayerName: name, RoomCode: options.RoomCode ?? joinCode, IsPublic: options.IsPublic === true }); const next = { RoomCode: result.RoomCode, PlayerId: result.PlayerId }; localStorage.setItem("final-voyage-player", JSON.stringify(next)); setIdentity(next); } catch (e) { setError(e instanceof Error ? e.message : "Unable to connect."); if (Action === "Join") void loadPublicLobbies(); } finally { setBusy(false); } }
-  async function act(Action: string, extra: Record<string, unknown> = {}) { if (!identity || busy) return; setBusy(true); setError(""); try { const next = await request({ Action, ...identity, ...extra }); if (next?.Room) setGame(next); } catch (e) { setError(e instanceof Error ? e.message : "Command failed."); } finally { setBusy(false); } }
-  async function sendMessage(MessageText: string) { if (!identity || chatBusy) return false; setChatBusy(true); setError(""); try { const next = await request({ Action: "SendMessage", ...identity, MessageText }); if (next?.Room) setGame(next); return true; } catch (e) { setError(e instanceof Error ? e.message : "Message failed to send."); return false; } finally { setChatBusy(false); } }
-  function reportPlayer(TargetPlayerId: string) { if (window.confirm("Report this player for inappropriate chat or conduct? The captain will see the report count.")) void act("ReportPlayer", { TargetPlayerId }); }
-  function removePlayer(TargetPlayerId: string) { if (window.confirm("Remove this player from the room? During a voyage, an AI crew member will replace them.")) void act("RemovePlayer", { TargetPlayerId }); }
-  function clearLocalGame() { localStorage.removeItem("final-voyage-player"); setIdentity(null); setGame(null); setName(""); setExitDialogOpen(false); }
+  async function enter(
+    Action: "Create" | "Join",
+    options: { RoomCode?: string; IsPublic?: boolean } = {},
+  ) {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await request({
+        Action,
+        PlayerName: name,
+        RoomCode: options.RoomCode ?? joinCode,
+        IsPublic: options.IsPublic === true,
+      });
+      const next = { RoomCode: result.RoomCode, PlayerId: result.PlayerId };
+      localStorage.setItem("final-voyage-player", JSON.stringify(next));
+      setIdentity(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to connect.");
+      if (Action === "Join") void loadPublicLobbies();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function act(Action: string, extra: Record<string, unknown> = {}) {
+    if (!identity || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await request({ Action, ...identity, ...extra });
+      if (next?.Room) setGame(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Command failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function sendMessage(MessageText: string) {
+    if (!identity || chatBusy) return false;
+    setChatBusy(true);
+    setError("");
+    try {
+      const next = await request({
+        Action: "SendMessage",
+        ...identity,
+        MessageText,
+      });
+      if (next?.Room) setGame(next);
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Message failed to send.");
+      return false;
+    } finally {
+      setChatBusy(false);
+    }
+  }
+  function reportPlayer(TargetPlayerId: string) {
+    if (
+      window.confirm(
+        "Report this player for inappropriate chat or conduct? The captain will see the report count.",
+      )
+    )
+      void act("ReportPlayer", { TargetPlayerId });
+  }
+  function removePlayer(TargetPlayerId: string) {
+    if (
+      window.confirm(
+        "Remove this player from the room? During a voyage, an AI crew member will replace them.",
+      )
+    )
+      void act("RemovePlayer", { TargetPlayerId });
+  }
+  function clearLocalGame() {
+    localStorage.removeItem("final-voyage-player");
+    setIdentity(null);
+    setGame(null);
+    setName("");
+    setExitDialogOpen(false);
+  }
   async function confirmLeave() {
     if (!identity || busy) return;
     const ClosingLobby = game?.Room.Phase === "Lobby" && game.Me.IsHost;
-    setBusy(true); setError("");
-    try { await request({ Action: ClosingLobby ? "CloseLobby" : "LeaveGame", ...identity }); clearLocalGame(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Unable to leave the room."); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError("");
+    try {
+      await request({
+        Action: ClosingLobby ? "CloseLobby" : "LeaveGame",
+        ...identity,
+      });
+      clearLocalGame();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to leave the room.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  if (!identity) return <main className="home-shell"><div className="stars" /><header className="topbar"><Brand /><Rules /></header><section className="entry-grid"><div className="mission-copy"><p className="eyebrow">COOPERATIVE MULTIPLAYER STRATEGY</p><h1>Make it home.<br /><em>Keep your agenda.</em></h1><p>Your ship is failing. Vote through six crises while protecting Fuel, Hull, Supplies, and Morale. Every crew member also has a private resource objective.</p><div className="failure-rule"><AlertTriangle size={19} /><span><b>One resource reaches zero, the voyage is over.</b> Keep all four systems alive through the sixth crisis.</span></div><div className="mission-facts"><span><Users size={18} /> 3–5 players</span><span><Shield size={18} /> 6 crisis rounds</span><span><Rocket size={18} /> No accounts</span></div></div><div className="entry-panel"><div className="signal-line"><span /> SECURE CREW CHANNEL <span /></div><label>YOUR CALLSIGN</label><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="Enter your name" /><div className="create-actions"><Button className="primary-action" disabled={busy} onClick={() => enter("Create")}><Rocket size={18} /> Create private voyage</Button><Button variant="outline" className="public-create" disabled={busy} onClick={() => enter("Create", { IsPublic: true })}><Globe2 size={18} /> Host public game</Button></div><div className="or"><span />join a private crew<span /></div><label>ROOM CODE</label><div className="join-row"><Input value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} placeholder="ABCDE" className="code-input" /><Button disabled={busy || joinCode.length !== 5} onClick={() => enter("Join")}>Join</Button></div><div className="public-browser"><div className="public-browser-heading"><div><Globe2 size={17} /><span><b>PUBLIC LOBBIES</b><small>Open crews waiting to launch</small></span></div><button aria-label="Refresh public lobbies" disabled={publicLoading} onClick={() => void loadPublicLobbies()}><RefreshCw size={15} /></button></div>{publicLoading && publicLobbies.length === 0 ? <p className="public-empty">Scanning available channels…</p> : publicLobbies.length === 0 ? <p className="public-empty">No public crews are waiting. Host the first one.</p> : <><Button className="quick-join" disabled={busy} onClick={() => enter("Join", { RoomCode: publicLobbies[0].RoomCode })}><Users size={17} /> Quick join</Button><div className="public-list">{publicLobbies.map((lobby) => <button disabled={busy} key={lobby.RoomCode} onClick={() => enter("Join", { RoomCode: lobby.RoomCode })}><div className="public-lobby-title"><span><b>{lobby.HostName}&apos;s crew</b><small>Room {lobby.RoomCode} · {lobbyAge(lobby.AgeMinutes)}</small></span><strong>{lobby.PlayerCount}/5 <ChevronRight size={15} /></strong></div><div className="public-lobby-stats"><span><Users size={12} /> {lobby.HumanCount} human</span><span><Bot size={12} /> {lobby.ComputerCount} AI</span><span><Check size={12} /> {lobby.ReadyHumanCount}/{lobby.HumanCount} ready</span><span>{lobby.OpenSeats} open</span></div><div className="public-lobby-tags"><span className={`difficulty ${lobby.Difficulty.toLowerCase()}`}>{lobby.Difficulty}</span><span>{lobby.AiAllowed ? "AI allowed" : "Humans only"}</span></div></button>)}</div></>}</div>{error && <p className="error"><AlertTriangle size={16} />{error}</p>}<p className="fine-print">Open this page on each player’s phone or laptop.</p></div></section></main>;
-  if (!game) return <main className="loading-shell"><Brand /><div className="radar" /><p>Locating crew channel…</p>{error && <Button variant="outline" onClick={clearLocalGame}>Return home</Button>}</main>;
+  if (!identity)
+    return (
+      <main className="home-shell">
+        <div className="stars" />
+        <header className="topbar">
+          <Brand />
+          <Rules />
+        </header>
+        <section className="entry-grid">
+          <div className="mission-copy">
+            <p className="eyebrow">COOPERATIVE MULTIPLAYER STRATEGY</p>
+            <h1>
+              Make it home.
+              <br />
+              <em>Keep your agenda.</em>
+            </h1>
+            <p>
+              Your ship is failing. Vote through six crises while protecting
+              Fuel, Hull, Supplies, and Morale. Every crew member also has a
+              private resource objective.
+            </p>
+            <ShipSchematic decorative />
+            <div className="failure-rule">
+              <AlertTriangle size={19} />
+              <span>
+                <b>One resource reaches zero, the voyage is over.</b> Keep all
+                four systems alive through the sixth crisis.
+              </span>
+            </div>
+            <div className="mission-facts">
+              <span>
+                <Users size={18} /> 3–5 players
+              </span>
+              <span>
+                <Shield size={18} /> 6 crisis rounds
+              </span>
+              <span>
+                <Rocket size={18} /> No accounts
+              </span>
+            </div>
+          </div>
+          <div className="entry-panel">
+            <div className="signal-line">
+              <span /> SECURE CREW CHANNEL <span />
+            </div>
+            <label>YOUR CALLSIGN</label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={20}
+              placeholder="Enter your name"
+            />
+            <div className="create-actions">
+              <Button
+                className="primary-action"
+                disabled={busy}
+                onClick={() => enter("Create")}
+              >
+                <Rocket size={18} /> Create private voyage
+              </Button>
+              <Button
+                variant="outline"
+                className="public-create"
+                disabled={busy}
+                onClick={() => enter("Create", { IsPublic: true })}
+              >
+                <Globe2 size={18} /> Host public game
+              </Button>
+            </div>
+            <div className="or">
+              <span />
+              join a private crew
+              <span />
+            </div>
+            <label>ROOM CODE</label>
+            <div className="join-row">
+              <Input
+                value={joinCode}
+                onChange={(e) =>
+                  setJoinCode(
+                    e.target.value
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9]/g, "")
+                      .slice(0, 5),
+                  )
+                }
+                placeholder="ABCDE"
+                className="code-input"
+              />
+              <Button
+                disabled={busy || joinCode.length !== 5}
+                onClick={() => enter("Join")}
+              >
+                Join
+              </Button>
+            </div>
+            <div className="public-browser">
+              <div className="public-browser-heading">
+                <div>
+                  <Globe2 size={17} />
+                  <span>
+                    <b>PUBLIC LOBBIES</b>
+                    <small>Open crews waiting to launch</small>
+                  </span>
+                </div>
+                <button
+                  aria-label="Refresh public lobbies"
+                  disabled={publicLoading}
+                  onClick={() => void loadPublicLobbies()}
+                >
+                  <RefreshCw size={15} />
+                </button>
+              </div>
+              {publicLoading && publicLobbies.length === 0 ? (
+                <p className="public-empty">Scanning available channels…</p>
+              ) : publicLobbies.length === 0 ? (
+                <p className="public-empty">
+                  No public crews are waiting. Host the first one.
+                </p>
+              ) : (
+                <>
+                  <Button
+                    className="quick-join"
+                    disabled={busy}
+                    onClick={() =>
+                      enter("Join", { RoomCode: publicLobbies[0].RoomCode })
+                    }
+                  >
+                    <Users size={17} /> Quick join
+                  </Button>
+                  <div className="public-list">
+                    {publicLobbies.map((lobby) => (
+                      <button
+                        disabled={busy}
+                        key={lobby.RoomCode}
+                        onClick={() =>
+                          enter("Join", { RoomCode: lobby.RoomCode })
+                        }
+                      >
+                        <div className="public-lobby-title">
+                          <span>
+                            <b>{lobby.HostName}&apos;s crew</b>
+                            <small>
+                              Room {lobby.RoomCode} ·{" "}
+                              {lobbyAge(lobby.AgeMinutes)}
+                            </small>
+                          </span>
+                          <strong>
+                            {lobby.PlayerCount}/5 <ChevronRight size={15} />
+                          </strong>
+                        </div>
+                        <div className="public-lobby-stats">
+                          <span>
+                            <Users size={12} /> {lobby.HumanCount} human
+                          </span>
+                          <span>
+                            <Bot size={12} /> {lobby.ComputerCount} AI
+                          </span>
+                          <span>
+                            <Check size={12} /> {lobby.ReadyHumanCount}/
+                            {lobby.HumanCount} ready
+                          </span>
+                          <span>{lobby.OpenSeats} open</span>
+                        </div>
+                        <div className="public-lobby-tags">
+                          <span
+                            className={`difficulty ${lobby.Difficulty.toLowerCase()}`}
+                          >
+                            {lobby.Difficulty}
+                          </span>
+                          <span>
+                            {lobby.AiAllowed ? "AI allowed" : "Humans only"}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            {error && (
+              <p className="error">
+                <AlertTriangle size={16} />
+                {error}
+              </p>
+            )}
+            <p className="fine-print">
+              Open this page on each player’s phone or laptop.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  if (!game)
+    return (
+      <main className="loading-shell">
+        <Brand />
+        <div className="radar" />
+        <p>Locating crew channel…</p>
+        {error && (
+          <Button variant="outline" onClick={clearLocalGame}>
+            Return home
+          </Button>
+        )}
+      </main>
+    );
 
-  const { Room, Me, Players, Crisis } = game; const shipAlive = resources.every((r) => Room[r.key] > 0); const winner = Room.WinningOption !== null && Crisis ? Crisis.Options[Room.WinningOption] : null;
-  const voteSeconds = Room.VoteDeadlineAt ? clockNow === 0 ? 45 : Math.max(0, Math.ceil((new Date(Room.VoteDeadlineAt).getTime() - clockNow) / 1000)) : 0;
+  const { Room, Me, Players, Crisis } = game;
+  const shipAlive = resources.every((r) => Room[r.key] > 0);
+  const winner =
+    Room.WinningOption !== null && Crisis
+      ? Crisis.Options[Room.WinningOption]
+      : null;
+  const voteSeconds = Room.VoteDeadlineAt
+    ? clockNow === 0
+      ? 45
+      : Math.max(
+          0,
+          Math.ceil(
+            (new Date(Room.VoteDeadlineAt).getTime() - clockNow) / 1000,
+          ),
+        )
+    : 0;
   const closingLobby = Room.Phase === "Lobby" && Me.IsHost;
-  const replacementCaptain = Players.find((player) => player.PlayerId !== Me.PlayerId)?.PlayerName;
-  return <main className="game-shell"><div className="stars" /><header className="game-header"><Brand /><div className="room-pill"><span>ROOM</span><b>{Room.RoomCode}</b><button aria-label="Copy room code" onClick={() => { navigator.clipboard.writeText(Room.RoomCode); setCopied(true); setTimeout(() => setCopied(false), 1200); }}>{copied ? <Check size={16} /> : <Copy size={16} />}</button></div><div className="header-actions"><Rules />{Room.Phase !== "Lobby" && Room.Phase !== "GameOver" && <button className="leave-game" onClick={() => setExitDialogOpen(true)}>Leave game</button>}</div></header>
-    {Room.Phase !== "Lobby" && <section className="status-deck"><div className="round-indicator"><span>VOYAGE PROGRESS</span><b>{Room.Phase === "GameOver" ? "MISSION COMPLETE" : `CRISIS ${Room.RoundNumber} OF 6`}</b><div>{Array.from({ length: 6 }, (_, i) => <i className={i < Room.RoundNumber ? "active" : ""} key={i} />)}</div></div><div className="resource-grid">{resources.map(({ key, label, Icon, color }) => <div className={`resource ${Room[key] <= 2 ? "critical" : ""}`} key={key}><div><Icon size={17} style={{ color }} /><span>{label}</span><b>{Room[key]}<small>/10</small></b></div><div className="meter"><i style={{ width: `${Room[key] * 10}%`, background: color }} /></div></div>)}</div></section>}
-    {Room.Phase === "Lobby" && <section className="lobby-layout"><div className="lobby-main panel"><p className="eyebrow">CREW ASSEMBLY</p><h1>Awaiting launch clearance</h1><p>Share the room code or fill open stations with AI crew. Every human must confirm they are ready before the captain can launch.</p><div className="large-code"><span>{Room.RoomCode}</span><Button variant="outline" onClick={() => navigator.clipboard.writeText(Room.RoomCode)}><Copy size={17} /> Copy</Button></div><div className="lobby-settings"><div><span>DIFFICULTY</span><small>Starting resources: {Room.Difficulty === "Easy" ? 8 : Room.Difficulty === "Hard" ? 5 : 6}</small></div><div className="difficulty-options">{(["Easy", "Standard", "Hard"] as const).map((difficulty) => <button className={Room.Difficulty === difficulty ? "selected" : ""} disabled={busy || !Me.IsHost} onClick={() => act("UpdateLobbySettings", { Difficulty: difficulty })} key={difficulty}>{difficulty}</button>)}</div><button className={`ai-policy ${Room.AiAllowed ? "allowed" : "humans"}`} disabled={busy || !Me.IsHost} onClick={() => act("UpdateLobbySettings", { AiAllowed: !Room.AiAllowed })}>{Room.AiAllowed ? <><Bot size={15} /> AI allowed</> : <><Users size={15} /> Humans only</>}</button></div><div className="crew-grid">{Players.map((p) => <div className={`crew-card ${p.IsComputer ? "computer" : ""} ${!p.IsActive ? "disconnected" : ""}`} key={p.PlayerId}><span>{p.IsComputer ? <Bot size={18} /> : p.PlayerName.slice(0, 1).toUpperCase()}</span><div><b>{p.PlayerName}{p.IsComputer && <em> AI</em>}</b><small>{p.IsHost ? "Captain" : p.IsComputer ? p.ComputerRole : "Crew member"}</small>{!p.IsComputer && <small className={`presence ${p.IsActive ? "online" : "offline"}`}>{p.IsActive ? <><Wifi size={11} /> Active</> : <><WifiOff size={11} /> {p.GraceSecondsRemaining > 0 ? `Disconnected · ${p.GraceSecondsRemaining}s grace` : "Disconnected · grace expired"}</>}</small>}</div><span className={`ready-badge ${p.IsReady ? "ready" : "not-ready"}`}>{p.IsReady ? <><Check size={12} /> Ready</> : "Not ready"}</span>{p.IsHost && <Crown size={17} />}{Me.IsHost && p.IsComputer && <button className="remove-computer" aria-label={`Remove ${p.PlayerName}`} disabled={busy} onClick={() => act("RemoveComputer", { ComputerPlayerId: p.PlayerId })}><X size={15} /></button>}{Me.IsHost && !p.IsComputer && p.PlayerId !== Me.PlayerId && p.DisconnectedSeconds >= 30 && <button className="manage-disconnected" aria-label={`Remove disconnected player ${p.PlayerName}`} title="Remove disconnected player" disabled={busy} onClick={() => act("ManageDisconnected", { TargetPlayerId: p.PlayerId })}><UserRoundX size={15} /></button>}</div>)}{Players.length < 5 && <div className="crew-card empty"><span>+</span><div><b>Open station</b><small>{5 - Players.length} {5 - Players.length === 1 ? "seat" : "seats"} remaining</small></div></div>}</div>{Me.IsHost && Room.AiAllowed && Players.length < 5 && <div className="computer-picker"><div><Bot size={17} /><span><b>ADD AI CREW</b><small>Choose a voting personality</small></span></div><div>{computerPersonalities.map((personality) => { const assigned = Players.some((player) => player.IsComputer && player.ComputerRole === personality.Role); return <button disabled={busy || assigned || Players.length >= 5} onClick={() => act("AddComputer", { ComputerRole: personality.Role })} key={personality.Role}><b>{personality.Name}</b><span>{assigned ? "Assigned" : personality.Detail}</span></button>; })}</div></div>}<div className="lobby-actions"><Button variant="outline" className={`ready-action ${Me.IsReady ? "is-ready" : ""}`} disabled={busy} onClick={() => act("ToggleReady")}>{Me.IsReady ? <><Check size={18} /> Ready</> : "Mark myself ready"}</Button>{Me.IsHost ? <Button className="primary-action launch" disabled={busy || Players.length < 3 || Players.filter((player) => player.IsComputer || player.IsActive).length < 3 || Players.some((player) => !player.IsComputer && !player.IsReady)} onClick={() => act("Start")}><Rocket size={18} /> Launch voyage</Button> : <div className="waiting"><i /> {Players.some((player) => !player.IsComputer && !player.IsReady) ? "Waiting for everyone to ready up…" : "Crew ready. Waiting for the captain…"}</div>}</div><button className="leave" onClick={() => setExitDialogOpen(true)}>{Me.IsHost ? "Close lobby" : "Leave room"}</button></div><aside className="side-stack"><div className="agenda-preview panel"><Shield size={28} /><h2>One crew. Private priorities.</h2><p>At launch, every human and AI player receives an agenda. AI crew vote automatically according to their specialties.</p><ul><li>All human players must be ready</li><li>AI crew are always ready</li><li>Disconnected players receive 30 seconds to return</li><li>Survive all six rounds</li></ul></div><ChatPanel messages={game.Messages} players={Players} playerId={Me.PlayerId} roomCode={Room.RoomCode} isHost={Me.IsHost} sending={chatBusy} onSend={sendMessage} onReport={reportPlayer} onRemove={removePlayer} /></aside></section>}
-    {(Room.Phase === "Voting" || Room.Phase === "Result") && Crisis && <section className="play-layout"><aside className="side-stack"><div className="secret-panel panel"><p className="eyebrow">CLASSIFIED AGENDA</p><Shield size={31} /><h2>{Me.Agenda?.Title}</h2><p>{Me.Agenda?.Brief}</p><div>{Me.Agenda?.Rule}</div><small>Only you can see this objective.</small><hr /><h3>CREW STATUS</h3>{Players.map((p) => <div className={`crew-status ${!p.IsActive ? "disconnected" : ""}`} key={p.PlayerId}><span>{p.IsComputer ? <Bot size={14} /> : p.PlayerName.slice(0, 1).toUpperCase()}</span><b>{p.PlayerName}{p.IsComputer && <small> AI</small>}{!p.IsComputer && !p.IsActive && <small>{p.GraceSecondsRemaining > 0 ? `RECONNECTING ${p.GraceSecondsRemaining}s` : "GRACE EXPIRED"}</small>}</b>{Me.IsHost && !p.IsComputer && p.PlayerId !== Me.PlayerId && p.DisconnectedSeconds >= 30 ? <button className="replace-disconnected" aria-label={`Replace ${p.PlayerName} with AI`} title="Replace with AI" disabled={busy} onClick={() => act("ManageDisconnected", { TargetPlayerId: p.PlayerId })}><Bot size={14} /></button> : p.HasVoted ? <Check size={16} /> : <i />}</div>)}</div><ChatPanel messages={game.Messages} players={Players} playerId={Me.PlayerId} roomCode={Room.RoomCode} isHost={Me.IsHost} sending={chatBusy} onSend={sendMessage} onReport={reportPlayer} onRemove={removePlayer} /></aside><article className="crisis-panel"><div className="crisis-heading"><div><p className="eyebrow">INCOMING TRANSMISSION · {Crisis.Category.toUpperCase()}</p><h1>{Crisis.Title}</h1></div><span>0{Room.RoundNumber}</span></div><blockquote>{Crisis.Transmission}</blockquote>{Room.Phase === "Voting" ? <><div className={`vote-timer ${voteSeconds <= 10 ? "urgent" : ""}`}><Clock3 size={18} /><div><b>{voteSeconds}s to vote</b><span>{voteSeconds > 0 ? "Missing votes will be submitted safely when time expires." : "The ship computer is finalizing missing votes…"}</span></div><div><i style={{ width: `${Math.min(100, Math.max(0, voteSeconds / 45 * 100))}%` }} /></div></div><p className="instruction">Discuss the consequences, then cast your private vote.</p><div className="option-grid">{Crisis.Options.map((choice, index) => <button className={`option-card ${Me.Vote === index ? "selected" : ""}`} disabled={busy || Me.HasVoted || voteSeconds === 0} onClick={() => act("Vote", { Option: index })} key={choice.Title}><span className="option-letter">{String.fromCharCode(65 + index)}</span><div><h3>{choice.Title}</h3><p>{choice.Detail}</p><EffectList effect={choice.Effect} /></div>{Me.Vote === index && <Check className="selection-check" size={18} />}</button>)}</div>{Me.HasVoted && <div className="vote-locked"><Check size={18} /><span><b>Vote locked</b> Waiting for {Players.filter((p) => !p.HasVoted).length || "the ship"} {Players.filter((p) => !p.HasVoted).length === 1 ? "crew member" : "crew members"}…</span></div>}</> : <div className="resolution"><p className="eyebrow">CREW DECISION</p><div className="resolution-icon"><Check size={27} /></div><h2>{winner?.Title}</h2><p>{Room.ResultText}</p>{winner && <EffectList effect={winner.Effect} />}{Me.IsHost ? <Button className="primary-action" disabled={busy} onClick={() => act("Advance")}>{Room.RoundNumber >= 6 || !shipAlive ? "View mission report" : "Continue voyage"}<ChevronRight size={18} /></Button> : <div className="waiting"><i /> Waiting for the captain…</div>}</div>}</article></section>}
-    {Room.Phase === "GameOver" && <section className="endgame"><div className={`outcome-emblem ${shipAlive ? "success" : "failure"}`}>{shipAlive ? <Rocket size={42} /> : <AlertTriangle size={42} />}</div><p className="eyebrow">FINAL MISSION REPORT</p><h1>{shipAlive ? "Earth is in sight." : "The voyage has ended."}</h1><p>{shipAlive ? "Against every crisis, the crew brought the ship home." : "A critical ship system reached zero before the crew could reach Earth."}</p><div className="scoreboard panel">{[...Players].sort((a, b) => (b.Score ?? 0) - (a.Score ?? 0)).map((p, index) => <div className="score-row" key={p.PlayerId}><b className="rank">{index + 1}</b><span className="avatar">{p.IsComputer ? <Bot size={17} /> : p.PlayerName.slice(0, 1).toUpperCase()}</span><div className="score-details"><div className="score-name"><h3>{p.PlayerName}{p.PlayerId === Me.PlayerId && <small> YOU</small>}{p.IsComputer && <small> AI</small>}</h3><span className={p.AgendaComplete ? "agenda-complete" : "agenda-incomplete"}>{p.AgendaComplete ? "Complete" : "Incomplete"}</span></div><div className="agenda-reveal"><b>{p.Agenda?.Title ?? "Unknown agenda"}</b>{p.Agenda?.Brief && <p>{p.Agenda.Brief}</p>}{p.Agenda?.Rule && <small>{p.Agenda.Rule}</small>}</div></div><strong>{p.Score}<small> PTS</small></strong></div>)}</div>{Me.IsHost ? <Button className="primary-action replay" disabled={busy} onClick={() => act("Rematch")}><Rocket size={18} /> Return to lobby</Button> : <div className="waiting centered"><i /> Waiting for the captain to rematch…</div>}</section>}
-    <AlertDialog open={exitDialogOpen} onOpenChange={setExitDialogOpen}><AlertDialogContent className="exit-dialog"><AlertDialogHeader><AlertDialogTitle>{closingLobby ? "Close this lobby?" : Me.IsHost ? "Leave and transfer captain?" : "Leave the game?"}</AlertDialogTitle><AlertDialogDescription>{closingLobby ? "Every crew member will be returned to the home screen. This cannot be undone." : Me.IsHost ? `You will leave the voyage. Captain controls will pass to ${replacementCaptain ?? "another crew member"}.` : "You will be removed from the crew and returned home."}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={(event) => { event.preventDefault(); void confirmLeave(); }}>{busy ? "Leaving…" : closingLobby ? "Close lobby" : Me.IsHost ? "Leave and transfer captain" : "Leave game"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-    {error && <div className="toast-error"><AlertTriangle size={16} />{error}</div>}
-  </main>;
+  const replacementCaptain = Players.find(
+    (player) => player.PlayerId !== Me.PlayerId,
+  )?.PlayerName;
+  return (
+    <main className="game-shell">
+      <div className="stars" />
+      <header className="game-header">
+        <Brand />
+        <div className="room-pill">
+          <span>ROOM</span>
+          <b>{Room.RoomCode}</b>
+          <button
+            aria-label="Copy room code"
+            onClick={() => {
+              navigator.clipboard.writeText(Room.RoomCode);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            }}
+          >
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+          </button>
+        </div>
+        <div className="header-actions">
+          <Rules />
+          {Room.Phase !== "Lobby" && Room.Phase !== "GameOver" && (
+            <button
+              className="leave-game"
+              onClick={() => setExitDialogOpen(true)}
+            >
+              Leave game
+            </button>
+          )}
+        </div>
+      </header>
+      {Room.Phase !== "Lobby" && (
+        <section className="status-deck">
+          <div className="round-indicator">
+            <span>VOYAGE PROGRESS</span>
+            <b>
+              {Room.Phase === "GameOver"
+                ? "MISSION COMPLETE"
+                : `CRISIS ${Room.RoundNumber} OF 6`}
+            </b>
+            <div>
+              {Array.from({ length: 6 }, (_, i) => (
+                <i className={i < Room.RoundNumber ? "active" : ""} key={i} />
+              ))}
+            </div>
+          </div>
+          <div className="resource-grid">
+            {resources.map(({ key, label, Icon, color }) => (
+              <div
+                className={`resource ${Room[key] <= 2 ? "critical" : ""}`}
+                key={key}
+              >
+                <div>
+                  <Icon size={17} style={{ color }} />
+                  <span>{label}</span>
+                  <b>
+                    {Room[key]}
+                    <small>/10</small>
+                  </b>
+                </div>
+                <div className="meter">
+                  <i
+                    style={{ width: `${Room[key] * 10}%`, background: color }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {Room.Phase === "Lobby" && (
+        <section className="lobby-layout">
+          <div className="lobby-main panel">
+            <p className="eyebrow">CREW ASSEMBLY</p>
+            <h1>Awaiting launch clearance</h1>
+            <p>
+              Share the room code or fill open stations with AI crew. Every
+              human must confirm they are ready before the captain can launch.
+            </p>
+            <div className="large-code">
+              <span>{Room.RoomCode}</span>
+              <Button
+                variant="outline"
+                onClick={() => navigator.clipboard.writeText(Room.RoomCode)}
+              >
+                <Copy size={17} /> Copy
+              </Button>
+            </div>
+            <div className="lobby-settings">
+              <div>
+                <span>DIFFICULTY</span>
+                <small>
+                  Starting resources:{" "}
+                  {Room.Difficulty === "Easy"
+                    ? 8
+                    : Room.Difficulty === "Hard"
+                      ? 5
+                      : 6}
+                </small>
+              </div>
+              <div className="difficulty-options">
+                {(["Easy", "Standard", "Hard"] as const).map((difficulty) => (
+                  <button
+                    className={Room.Difficulty === difficulty ? "selected" : ""}
+                    disabled={busy || !Me.IsHost}
+                    onClick={() =>
+                      act("UpdateLobbySettings", { Difficulty: difficulty })
+                    }
+                    key={difficulty}
+                  >
+                    {difficulty}
+                  </button>
+                ))}
+              </div>
+              <button
+                className={`ai-policy ${Room.AiAllowed ? "allowed" : "humans"}`}
+                disabled={busy || !Me.IsHost}
+                onClick={() =>
+                  act("UpdateLobbySettings", { AiAllowed: !Room.AiAllowed })
+                }
+              >
+                {Room.AiAllowed ? (
+                  <>
+                    <Bot size={15} /> AI allowed
+                  </>
+                ) : (
+                  <>
+                    <Users size={15} /> Humans only
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="crew-grid">
+              {Players.map((p) => (
+                <div
+                  className={`crew-card ${p.IsComputer ? "computer" : ""} ${!p.IsActive ? "disconnected" : ""}`}
+                  key={p.PlayerId}
+                >
+                  <span>
+                    {p.IsComputer ? (
+                      <Bot size={18} />
+                    ) : (
+                      p.PlayerName.slice(0, 1).toUpperCase()
+                    )}
+                  </span>
+                  <div>
+                    <b>
+                      {p.PlayerName}
+                      {p.IsComputer && <em> AI</em>}
+                    </b>
+                    <small>
+                      {p.IsHost
+                        ? "Captain"
+                        : p.IsComputer
+                          ? p.ComputerRole
+                          : "Crew member"}
+                    </small>
+                    {!p.IsComputer && (
+                      <small
+                        className={`presence ${p.IsActive ? "online" : "offline"}`}
+                      >
+                        {p.IsActive ? (
+                          <>
+                            <Wifi size={11} /> Active
+                          </>
+                        ) : (
+                          <>
+                            <WifiOff size={11} />{" "}
+                            {p.GraceSecondsRemaining > 0
+                              ? `Disconnected · ${p.GraceSecondsRemaining}s grace`
+                              : "Disconnected · grace expired"}
+                          </>
+                        )}
+                      </small>
+                    )}
+                  </div>
+                  <span
+                    className={`ready-badge ${p.IsReady ? "ready" : "not-ready"}`}
+                  >
+                    {p.IsReady ? (
+                      <>
+                        <Check size={12} /> Ready
+                      </>
+                    ) : (
+                      "Not ready"
+                    )}
+                  </span>
+                  {p.IsHost && <Crown size={17} />}
+                  {Me.IsHost && p.IsComputer && (
+                    <button
+                      className="remove-computer"
+                      aria-label={`Remove ${p.PlayerName}`}
+                      disabled={busy}
+                      onClick={() =>
+                        act("RemoveComputer", { ComputerPlayerId: p.PlayerId })
+                      }
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                  {Me.IsHost &&
+                    !p.IsComputer &&
+                    p.PlayerId !== Me.PlayerId &&
+                    p.DisconnectedSeconds >= 30 && (
+                      <button
+                        className="manage-disconnected"
+                        aria-label={`Remove disconnected player ${p.PlayerName}`}
+                        title="Remove disconnected player"
+                        disabled={busy}
+                        onClick={() =>
+                          act("ManageDisconnected", {
+                            TargetPlayerId: p.PlayerId,
+                          })
+                        }
+                      >
+                        <UserRoundX size={15} />
+                      </button>
+                    )}
+                </div>
+              ))}
+              {Players.length < 5 && (
+                <div className="crew-card empty">
+                  <span>+</span>
+                  <div>
+                    <b>Open station</b>
+                    <small>
+                      {5 - Players.length}{" "}
+                      {5 - Players.length === 1 ? "seat" : "seats"} remaining
+                    </small>
+                  </div>
+                </div>
+              )}
+            </div>
+            {Me.IsHost && Room.AiAllowed && Players.length < 5 && (
+              <div className="computer-picker">
+                <div>
+                  <Bot size={17} />
+                  <span>
+                    <b>ADD AI CREW</b>
+                    <small>Choose a voting personality</small>
+                  </span>
+                </div>
+                <div>
+                  {computerPersonalities.map((personality) => {
+                    const assigned = Players.some(
+                      (player) =>
+                        player.IsComputer &&
+                        player.ComputerRole === personality.Role,
+                    );
+                    return (
+                      <button
+                        disabled={busy || assigned || Players.length >= 5}
+                        onClick={() =>
+                          act("AddComputer", { ComputerRole: personality.Role })
+                        }
+                        key={personality.Role}
+                      >
+                        <b>{personality.Name}</b>
+                        <span>
+                          {assigned ? "Assigned" : personality.Detail}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="lobby-actions">
+              <Button
+                variant="outline"
+                className={`ready-action ${Me.IsReady ? "is-ready" : ""}`}
+                disabled={busy}
+                onClick={() => act("ToggleReady")}
+              >
+                {Me.IsReady ? (
+                  <>
+                    <Check size={18} /> Ready
+                  </>
+                ) : (
+                  "Mark myself ready"
+                )}
+              </Button>
+              {Me.IsHost ? (
+                <Button
+                  className="primary-action launch"
+                  disabled={
+                    busy ||
+                    Players.length < 3 ||
+                    Players.filter(
+                      (player) => player.IsComputer || player.IsActive,
+                    ).length < 3 ||
+                    Players.some(
+                      (player) => !player.IsComputer && !player.IsReady,
+                    )
+                  }
+                  onClick={() => act("Start")}
+                >
+                  <Rocket size={18} /> Launch voyage
+                </Button>
+              ) : (
+                <div className="waiting">
+                  <i />{" "}
+                  {Players.some(
+                    (player) => !player.IsComputer && !player.IsReady,
+                  )
+                    ? "Waiting for everyone to ready up…"
+                    : "Crew ready. Waiting for the captain…"}
+                </div>
+              )}
+            </div>
+            <button className="leave" onClick={() => setExitDialogOpen(true)}>
+              {Me.IsHost ? "Close lobby" : "Leave room"}
+            </button>
+          </div>
+          <aside className="side-stack">
+            <ShipSchematic compact decorative />
+            <div className="agenda-preview panel">
+              <Shield size={28} />
+              <h2>One crew. Private priorities.</h2>
+              <p>
+                At launch, every human and AI player receives an agenda. AI crew
+                vote automatically according to their specialties.
+              </p>
+              <ul>
+                <li>All human players must be ready</li>
+                <li>AI crew are always ready</li>
+                <li>Disconnected players receive 30 seconds to return</li>
+                <li>Survive all six rounds</li>
+              </ul>
+            </div>
+            <ChatPanel
+              messages={game.Messages}
+              players={Players}
+              playerId={Me.PlayerId}
+              roomCode={Room.RoomCode}
+              isHost={Me.IsHost}
+              sending={chatBusy}
+              onSend={sendMessage}
+              onReport={reportPlayer}
+              onRemove={removePlayer}
+            />
+          </aside>
+        </section>
+      )}
+      {(Room.Phase === "Voting" || Room.Phase === "Result") && Crisis && (
+        <section className="play-layout">
+          <ShipSchematic
+            values={{
+              Fuel: Room.Fuel,
+              Hull: Room.Hull,
+              Supplies: Room.Supplies,
+              Morale: Room.Morale,
+            }}
+          />
+          <aside className="side-stack">
+            <div className="secret-panel panel">
+              <p className="eyebrow">CLASSIFIED AGENDA</p>
+              <Shield size={31} />
+              <h2>{Me.Agenda?.Title}</h2>
+              <p>{Me.Agenda?.Brief}</p>
+              <div>{Me.Agenda?.Rule}</div>
+              <small>Only you can see this objective.</small>
+              <hr />
+              <h3>CREW STATUS</h3>
+              {Players.map((p) => (
+                <div
+                  className={`crew-status ${!p.IsActive ? "disconnected" : ""}`}
+                  key={p.PlayerId}
+                >
+                  <span>
+                    {p.IsComputer ? (
+                      <Bot size={14} />
+                    ) : (
+                      p.PlayerName.slice(0, 1).toUpperCase()
+                    )}
+                  </span>
+                  <b>
+                    {p.PlayerName}
+                    {p.IsComputer && <small> AI</small>}
+                    {!p.IsComputer && !p.IsActive && (
+                      <small>
+                        {p.GraceSecondsRemaining > 0
+                          ? `RECONNECTING ${p.GraceSecondsRemaining}s`
+                          : "GRACE EXPIRED"}
+                      </small>
+                    )}
+                  </b>
+                  {Me.IsHost &&
+                  !p.IsComputer &&
+                  p.PlayerId !== Me.PlayerId &&
+                  p.DisconnectedSeconds >= 30 ? (
+                    <button
+                      className="replace-disconnected"
+                      aria-label={`Replace ${p.PlayerName} with AI`}
+                      title="Replace with AI"
+                      disabled={busy}
+                      onClick={() =>
+                        act("ManageDisconnected", {
+                          TargetPlayerId: p.PlayerId,
+                        })
+                      }
+                    >
+                      <Bot size={14} />
+                    </button>
+                  ) : p.HasVoted ? (
+                    <Check size={16} />
+                  ) : (
+                    <i />
+                  )}
+                </div>
+              ))}
+            </div>
+            <ChatPanel
+              messages={game.Messages}
+              players={Players}
+              playerId={Me.PlayerId}
+              roomCode={Room.RoomCode}
+              isHost={Me.IsHost}
+              sending={chatBusy}
+              onSend={sendMessage}
+              onReport={reportPlayer}
+              onRemove={removePlayer}
+            />
+          </aside>
+          <article className="crisis-panel">
+            <div className="crisis-heading">
+              <div>
+                <p className="eyebrow">
+                  INCOMING TRANSMISSION · {Crisis.Category.toUpperCase()}
+                </p>
+                <h1>{Crisis.Title}</h1>
+              </div>
+              <span>0{Room.RoundNumber}</span>
+            </div>
+            <blockquote>{Crisis.Transmission}</blockquote>
+            {Room.Phase === "Voting" ? (
+              <>
+                <div
+                  className={`vote-timer ${voteSeconds <= 10 ? "urgent" : ""}`}
+                >
+                  <Clock3 size={18} />
+                  <div>
+                    <b>{voteSeconds}s to vote</b>
+                    <span>
+                      {voteSeconds > 0
+                        ? "Missing votes will be submitted safely when time expires."
+                        : "The ship computer is finalizing missing votes…"}
+                    </span>
+                  </div>
+                  <div>
+                    <i
+                      style={{
+                        width: `${Math.min(100, Math.max(0, (voteSeconds / 45) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <p className="instruction">
+                  Discuss the consequences, then cast your private vote.
+                </p>
+                <div className="option-grid">
+                  {Crisis.Options.map((choice, index) => (
+                    <button
+                      className={`option-card ${Me.Vote === index ? "selected" : ""}`}
+                      disabled={busy || Me.HasVoted || voteSeconds === 0}
+                      onClick={() => act("Vote", { Option: index })}
+                      key={choice.Title}
+                    >
+                      <span className="option-letter">
+                        {String.fromCharCode(65 + index)}
+                      </span>
+                      <div>
+                        <h3>{choice.Title}</h3>
+                        <p>{choice.Detail}</p>
+                        <EffectList effect={choice.Effect} />
+                      </div>
+                      {Me.Vote === index && (
+                        <Check className="selection-check" size={18} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {Me.HasVoted && (
+                  <div className="vote-locked">
+                    <Check size={18} />
+                    <span>
+                      <b>Vote locked</b> Waiting for{" "}
+                      {Players.filter((p) => !p.HasVoted).length || "the ship"}{" "}
+                      {Players.filter((p) => !p.HasVoted).length === 1
+                        ? "crew member"
+                        : "crew members"}
+                      …
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="resolution">
+                <p className="eyebrow">CREW DECISION</p>
+                <div className="resolution-icon">
+                  <Check size={27} />
+                </div>
+                <h2>{winner?.Title}</h2>
+                <p>{Room.ResultText}</p>
+                {winner && (
+                  <div className="resource-delta-grid">
+                    {resources.map(({ key, label, Icon }) => {
+                      const change = Number(winner.Effect[key] ?? 0);
+                      if (change === 0) return null;
+                      const before = roundStartResources?.[key] ?? Room[key] - change;
+                      return (
+                        <div className={change > 0 ? "gain" : "loss"} key={key}>
+                          <Icon size={16} />
+                          <span>{label}</span>
+                          <b>
+                            {before} <ChevronRight size={14} /> {Room[key]}
+                          </b>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {Me.IsHost ? (
+                  <Button
+                    className="primary-action"
+                    disabled={busy}
+                    onClick={() => act("Advance")}
+                  >
+                    {Room.RoundNumber >= 6 || !shipAlive
+                      ? "View mission report"
+                      : "Continue voyage"}
+                    <ChevronRight size={18} />
+                  </Button>
+                ) : (
+                  <div className="waiting">
+                    <i /> Waiting for the captain…
+                  </div>
+                )}
+              </div>
+            )}
+          </article>
+        </section>
+      )}
+      {Room.Phase === "GameOver" && (
+        <section className="endgame">
+          <div
+            className={`outcome-emblem ${shipAlive ? "success" : "failure"}`}
+          >
+            {shipAlive ? <Rocket size={42} /> : <AlertTriangle size={42} />}
+          </div>
+          <p className="eyebrow">FINAL MISSION REPORT</p>
+          <h1>{shipAlive ? "Earth is in sight." : "The voyage has ended."}</h1>
+          <p>
+            {shipAlive
+              ? "Against every crisis, the crew brought the ship home."
+              : "A critical ship system reached zero before the crew could reach Earth."}
+          </p>
+          <ShipSchematic
+            compact
+            values={{
+              Fuel: Room.Fuel,
+              Hull: Room.Hull,
+              Supplies: Room.Supplies,
+              Morale: Room.Morale,
+            }}
+          />
+          <div className="scoreboard panel">
+            {[...Players]
+              .sort((a, b) => (b.Score ?? 0) - (a.Score ?? 0))
+              .map((p, index) => (
+                <div className="score-row" key={p.PlayerId}>
+                  <b className="rank">{index + 1}</b>
+                  <span className="avatar">
+                    {p.IsComputer ? (
+                      <Bot size={17} />
+                    ) : (
+                      p.PlayerName.slice(0, 1).toUpperCase()
+                    )}
+                  </span>
+                  <div className="score-details">
+                    <div className="score-name">
+                      <h3>
+                        {p.PlayerName}
+                        {p.PlayerId === Me.PlayerId && <small> YOU</small>}
+                        {p.IsComputer && <small> AI</small>}
+                      </h3>
+                      <span
+                        className={
+                          p.AgendaComplete
+                            ? "agenda-complete"
+                            : "agenda-incomplete"
+                        }
+                      >
+                        {p.AgendaComplete ? "Complete" : "Incomplete"}
+                      </span>
+                    </div>
+                    <div className="agenda-reveal">
+                      <b>{p.Agenda?.Title ?? "Unknown agenda"}</b>
+                      {p.Agenda?.Brief && <p>{p.Agenda.Brief}</p>}
+                      {p.Agenda?.Rule && <small>{p.Agenda.Rule}</small>}
+                    </div>
+                  </div>
+                  <strong>
+                    {p.Score}
+                    <small> PTS</small>
+                  </strong>
+                </div>
+              ))}
+          </div>
+          {Me.IsHost ? (
+            <Button
+              className="primary-action replay"
+              disabled={busy}
+              onClick={() => act("Rematch")}
+            >
+              <Rocket size={18} /> Return to lobby
+            </Button>
+          ) : (
+            <div className="waiting centered">
+              <i /> Waiting for the captain to rematch…
+            </div>
+          )}
+        </section>
+      )}
+      <AlertDialog open={exitDialogOpen} onOpenChange={setExitDialogOpen}>
+        <AlertDialogContent className="exit-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {closingLobby
+                ? "Close this lobby?"
+                : Me.IsHost
+                  ? "Leave and transfer captain?"
+                  : "Leave the game?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {closingLobby
+                ? "Every crew member will be returned to the home screen. This cannot be undone."
+                : Me.IsHost
+                  ? `You will leave the voyage. Captain controls will pass to ${replacementCaptain ?? "another crew member"}.`
+                  : "You will be removed from the crew and returned home."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmLeave();
+              }}
+            >
+              {busy
+                ? "Leaving…"
+                : closingLobby
+                  ? "Close lobby"
+                  : Me.IsHost
+                    ? "Leave and transfer captain"
+                    : "Leave game"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {error && (
+        <div className="toast-error">
+          <AlertTriangle size={16} />
+          {error}
+        </div>
+      )}
+    </main>
+  );
 }
