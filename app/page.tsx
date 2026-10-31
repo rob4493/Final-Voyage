@@ -1055,105 +1055,107 @@ export default function Home() {
               </button>
             </div>
             <div className="crew-grid">
-              {Players.map((p) => (
-                <div
-                  className={`crew-card ${p.IsComputer ? "computer" : ""} ${!p.IsActive ? "disconnected" : ""}`}
-                  key={p.PlayerId}
-                >
-                  <span>
-                    {p.IsComputer ? (
-                      <Bot size={18} />
-                    ) : (
-                      p.PlayerName.slice(0, 1).toUpperCase()
-                    )}
-                  </span>
-                  <div>
-                    <b>
-                      {p.PlayerName}
-                      {p.IsComputer && <em> AI</em>}
-                    </b>
-                    <small>
-                      {p.IsHost
-                        ? "Captain"
-                        : p.IsComputer
-                          ? p.ComputerRole
-                          : "Crew member"}
-                    </small>
-                    {!p.IsComputer && (
-                      <small
-                        className={`presence ${p.IsActive ? "online" : "offline"}`}
-                      >
-                        {p.IsActive ? (
-                          <>
-                            <Wifi size={11} /> Active
-                          </>
-                        ) : (
-                          <>
-                            <WifiOff size={11} />{" "}
-                            {p.GraceSecondsRemaining > 0
-                              ? `Disconnected · ${p.GraceSecondsRemaining}s grace`
-                              : "Disconnected · grace expired"}
-                          </>
-                        )}
-                      </small>
-                    )}
-                  </div>
-                  <span
-                    className={`ready-badge ${p.IsReady ? "ready" : "not-ready"}`}
+              {Array.from({ length: 5 }, (_, stationIndex) => {
+                const p = Players[stationIndex];
+                if (!p) {
+                  return (
+                    <div className="crew-card empty" key={`station-${stationIndex}`}>
+                      <span>{stationIndex + 1}</span>
+                      <div>
+                        <b>Available station</b>
+                        <small>Awaiting crew assignment</small>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div
+                    className={`crew-card ${p.IsComputer ? "computer" : ""} ${!p.IsActive ? "disconnected" : ""}`}
+                    key={p.PlayerId}
                   >
-                    {p.IsReady ? (
-                      <>
-                        <Check size={12} /> Ready
-                      </>
-                    ) : (
-                      "Not ready"
-                    )}
-                  </span>
-                  {p.IsHost && <Crown size={17} />}
-                  {Me.IsHost && p.IsComputer && (
-                    <button
-                      className="remove-computer"
-                      aria-label={`Remove ${p.PlayerName}`}
-                      disabled={busy}
-                      onClick={() =>
-                        act("RemoveComputer", { ComputerPlayerId: p.PlayerId })
-                      }
+                    <span>
+                      {p.IsComputer ? (
+                        <Bot size={18} />
+                      ) : (
+                        p.PlayerName.slice(0, 1).toUpperCase()
+                      )}
+                    </span>
+                    <div>
+                      <b>
+                        {p.PlayerName}
+                        {p.IsComputer && <em> AI</em>}
+                      </b>
+                      <small>
+                        {p.IsHost
+                          ? "Captain"
+                          : p.IsComputer
+                            ? p.ComputerRole
+                            : "Crew member"}
+                      </small>
+                      {!p.IsComputer && (
+                        <small
+                          className={`presence ${p.IsActive ? "online" : "offline"}`}
+                        >
+                          {p.IsActive ? (
+                            <>
+                              <Wifi size={12} /> Active connection
+                            </>
+                          ) : (
+                            <>
+                              <WifiOff size={12} />{" "}
+                              {p.GraceSecondsRemaining > 0
+                                ? `Disconnected · ${p.GraceSecondsRemaining}s grace`
+                                : "Disconnected · grace expired"}
+                            </>
+                          )}
+                        </small>
+                      )}
+                    </div>
+                    <span
+                      className={`ready-badge ${p.IsReady ? "ready" : "not-ready"}`}
                     >
-                      <X size={15} />
-                    </button>
-                  )}
-                  {Me.IsHost &&
-                    !p.IsComputer &&
-                    p.PlayerId !== Me.PlayerId &&
-                    p.DisconnectedSeconds >= 30 && (
+                      {p.IsReady ? (
+                        <>
+                          <Check size={12} /> Ready
+                        </>
+                      ) : (
+                        "Not ready"
+                      )}
+                    </span>
+                    {p.IsHost && <Crown size={17} />}
+                    {Me.IsHost && p.IsComputer && (
                       <button
-                        className="manage-disconnected"
-                        aria-label={`Remove disconnected player ${p.PlayerName}`}
-                        title="Remove disconnected player"
+                        className="remove-computer"
+                        aria-label={`Remove ${p.PlayerName}`}
                         disabled={busy}
                         onClick={() =>
-                          act("ManageDisconnected", {
-                            TargetPlayerId: p.PlayerId,
-                          })
+                          act("RemoveComputer", { ComputerPlayerId: p.PlayerId })
                         }
                       >
-                        <UserRoundX size={15} />
+                        <X size={15} />
                       </button>
                     )}
-                </div>
-              ))}
-              {Players.length < 5 && (
-                <div className="crew-card empty">
-                  <span>+</span>
-                  <div>
-                    <b>Open station</b>
-                    <small>
-                      {5 - Players.length}{" "}
-                      {5 - Players.length === 1 ? "seat" : "seats"} remaining
-                    </small>
+                    {Me.IsHost &&
+                      !p.IsComputer &&
+                      p.PlayerId !== Me.PlayerId &&
+                      p.DisconnectedSeconds >= 30 && (
+                        <button
+                          className="manage-disconnected"
+                          aria-label={`Remove disconnected player ${p.PlayerName}`}
+                          title="Remove disconnected player"
+                          disabled={busy}
+                          onClick={() =>
+                            act("ManageDisconnected", {
+                              TargetPlayerId: p.PlayerId,
+                            })
+                          }
+                        >
+                          <UserRoundX size={15} />
+                        </button>
+                      )}
                   </div>
-                </div>
-              )}
+                );
+              })}
             </div>
             {Me.IsHost && Room.AiAllowed && Players.length < 5 && (
               <div className="computer-picker">

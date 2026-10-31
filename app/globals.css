@@ -325,3 +325,325 @@ button:focus-visible, input:focus-visible, summary:focus-visible, [role="button"
 @media(prefers-reduced-motion:reduce) {
   *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; }
 }
+
+/* Command-deck refinement pass */
+.mission-copy h1,
+.lobby-main h1,
+.crisis-panel h1,
+.resolution h2,
+.endgame h1,
+.primary-action,
+.brand b {
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", "Arial Narrow", sans-serif;
+  font-weight: 900;
+  font-stretch: condensed;
+}
+
+.brand,
+.eyebrow,
+.signal-line,
+.or,
+.room-pill,
+.round-indicator,
+.resource,
+.ship-schematic,
+.lobby-settings,
+.computer-picker,
+.vote-timer {
+  --cyan-retired: var(--silver);
+}
+
+.rules-button,
+.public-browser-heading svg,
+.mission-facts svg,
+.agenda-preview>svg,
+.secret-panel>svg,
+.chat-panel summary svg,
+.chat-form button,
+.room-pill button,
+.crew-status svg,
+.selection-check {
+  color: var(--amber) !important;
+}
+
+.loading-shell .radar {
+  border-color: var(--crimson);
+  box-shadow: 0 0 30px #dd2f3433;
+}
+.loading-shell .radar:after { background: var(--crimson); }
+.loading-shell p { color: var(--silver-dim); }
+
+/* Detailed vessel asset and state overlays */
+.ship-schematic {
+  isolation: isolate;
+  min-height: 0;
+  background:
+    radial-gradient(circle at 50% 50%, #2b2c29 0, #111312 48%, #070808 82%),
+    #090a09;
+}
+.ship-schematic:before {
+  content: "VESSEL FV-06 // LIVE DECK SCAN";
+  z-index: 8;
+  color: #c8c4ba;
+  font-size: .64rem;
+  letter-spacing: .1em;
+}
+.ship-grid { opacity: .22; background-size: 28px 28px; }
+.ship-asset {
+  position: relative;
+  z-index: 2;
+  margin: 38px 20px 26px;
+  filter: drop-shadow(0 18px 18px #000b) drop-shadow(0 2px 2px #000);
+}
+.ship-asset img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+.ship-live-zone {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  border: 1px solid transparent;
+  transition: opacity .3s ease, background .3s ease, box-shadow .3s ease;
+}
+.ship-live-zone.fuel { left: 2.5%; top: 12%; width: 32%; height: 77%; border-radius: 42% 12% 12% 42%; }
+.ship-live-zone.supplies { left: 29%; top: 15%; width: 18%; height: 34%; clip-path: polygon(9% 0,100% 0,100% 100%,0 100%,0 20%); }
+.ship-live-zone.morale { left: 45%; top: 14%; width: 21%; height: 72%; clip-path: polygon(5% 0,95% 0,100% 15%,100% 85%,95% 100%,5% 100%,0 85%,0 15%); }
+.ship-live-zone.hull { left: 67%; top: 9%; width: 29%; height: 82%; clip-path: polygon(0 10%,63% 10%,100% 35%,100% 65%,63% 90%,0 90%,8% 50%); }
+.ship-live-zone.caution {
+  opacity: .44;
+  background: radial-gradient(circle, #e39a326e 0, #e39a3228 48%, transparent 74%);
+  border-color: #e6a54180;
+  box-shadow: inset 0 0 22px #e39a3247, 0 0 18px #e39a322e;
+}
+.ship-live-zone.critical {
+  opacity: .62;
+  background: radial-gradient(circle, #ef3c4280 0, #dd2f3440 50%, transparent 75%);
+  border-color: #ff5559b3;
+  box-shadow: inset 0 0 30px #dd2f3466, 0 0 24px #dd2f344d;
+  animation: zone-alert 1.7s ease-in-out infinite;
+}
+.ship-callout {
+  min-width: 132px;
+  padding: 8px 10px;
+  border-color: #686b65;
+  background: #0b0c0be8;
+}
+.ship-callout span { font-size: .68rem; color: #f0ece3; }
+.ship-callout b { font-size: .57rem; color: #a9aaa4; }
+.ship-callout.fuel { left: 2%; top: 40%; }
+.ship-callout.supplies { left: 29%; top: 11%; bottom: auto; }
+.ship-callout.morale { left: 50%; top: 11%; }
+.ship-callout.hull { right: 2%; top: 23%; }
+.ship-callout.caution { border-color: #a67630; }
+.ship-callout.critical { border-color: #a83237; }
+.ship-schematic figcaption { color: #a5a59f; font-size: .56rem; }
+.ship-schematic.compact .ship-asset { margin: 28px 12px 17px; }
+
+/* Boarding screen composition */
+.entry-grid {
+  max-width: 1380px;
+  min-height: calc(100vh - 72px);
+  grid-template-columns: minmax(0,1.12fr) minmax(390px,.88fr);
+  align-items: start;
+  gap: 42px;
+  padding-top: 28px;
+}
+.mission-copy { min-width: 0; }
+.mission-copy h1 {
+  max-width: 760px;
+  font-size: clamp(3.2rem,4.25vw,4.55rem);
+  line-height: .87;
+}
+.mission-copy h1 em { white-space: nowrap; }
+.mission-copy>p:not(.eyebrow) {
+  margin: 17px 0 13px;
+  color: #d0ccc3;
+  font-size: 1rem;
+  line-height: 1.52;
+}
+.mission-copy>.ship-schematic { max-width: 790px; margin-top: 10px; }
+.failure-rule { margin: 13px 0 14px; }
+.mission-facts span { color: #d6d2c9; font-size: .82rem; }
+.entry-panel { margin-top: 3px; padding: 27px; }
+.entry-panel label { margin-top: 18px; color: #d5d0c6; font-size: .73rem; letter-spacing: .08em; }
+.entry-panel input { font-size: 1rem; }
+.create-actions { gap: 7px; }
+.or { margin-top: 17px; }
+.public-browser { margin-top: 17px; padding-top: 14px; }
+.public-browser-heading b { font-size: .74rem; }
+.public-browser-heading small,.public-empty { color: #b0afa8; font-size: .75rem; }
+.public-list { max-height: 220px; }
+.public-list b { font-size: .84rem; }
+.public-list small { color: #b5b4ad; font-size: .72rem; }
+.public-lobby-stats>span,.public-lobby-tags>span {
+  color: #c7c5be;
+  font-size: .65rem;
+  padding: 4px 7px;
+  border-radius: 2px;
+}
+.public-lobby-title strong { color: var(--amber); }
+.public-browser-heading>button { background:#171918; border-color:#575b57; color:var(--amber); }
+.public-create:hover { background:#252725!important; border-color:#858882!important; }
+.public-lobby-tags .difficulty.standard { color:#e9c27a; border-color:#8a692f; }
+
+/* Five-station crew assembly */
+.lobby-layout {
+  max-width: 1440px;
+  grid-template-columns: minmax(0,1fr) 330px;
+  gap: 18px;
+  padding-top: 26px;
+}
+.lobby-main { padding: 28px; }
+.lobby-main h1 { font-size: 2.35rem; margin-bottom: 4px; }
+.lobby-main>p:not(.eyebrow) { margin: 5px 0 12px; color: #c4c1b9; }
+.large-code {
+  width: fit-content;
+  min-width: 315px;
+  margin: 15px 0;
+  padding: 10px 12px;
+  gap: 20px;
+}
+.large-code>span { font-size: 1.45rem; }
+.large-code button { height: 36px; }
+.lobby-settings {
+  margin-bottom: 15px;
+  padding: 11px 12px;
+  border-color: #5b5e59;
+}
+.lobby-settings>div:first-child span { color: #d8d3c9; font-size: .68rem; }
+.lobby-settings>div:first-child small { color: #bdbbb4; font-size: .72rem; }
+.difficulty-options button,.ai-policy { min-height: 38px; font-size: .72rem; }
+.difficulty-options button.selected { color: #fff8ec; border-bottom-color: var(--amber); }
+.crew-grid { grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; }
+.crew-card {
+  min-width: 0;
+  min-height: 146px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 13px 11px;
+}
+.crew-card:before { content: "CREW STATION"; color: #92938d; font-size: .52rem; }
+.crew-card>span:first-of-type { width: 38px; height: 38px; flex: none; }
+.crew-card>div { min-width: 0; width: 100%; }
+.crew-card b { overflow-wrap: anywhere; line-height: 1.15; }
+.crew-card small { color: #c5c3bc; font-size: .75rem; line-height: 1.3; }
+.crew-card .presence { font-size: .68rem; }
+.crew-card>svg { position: absolute; top: 36px; right: 10px; }
+.ready-badge { margin-top: auto; font-size: .64rem!important; padding: 5px 7px; }
+.crew-card.empty {
+  opacity: 1;
+  border-style: dashed;
+  border-color: #555954;
+  background: #0b0d0c;
+}
+.crew-card.empty>span { color: #aaa9a2; background: #202321; }
+.crew-card.empty b { color: #d0cdc5; }
+.crew-card.empty small { color: #999b95; }
+.computer-picker { margin-top: 13px; padding: 12px; }
+.computer-picker>div:first-child b { font-size: .72rem; }
+.computer-picker>div:first-child small { color: #c1beb6; font-size: .72rem; }
+.computer-picker button { min-height: 58px; padding: 8px; }
+.computer-picker button b { font-size: .72rem; }
+.computer-picker button span { color: #c5c1b8; font-size: .68rem; line-height: 1.3; }
+.computer-picker button:disabled { opacity: .58; }
+.computer-picker>div:first-child>svg { color:var(--amber); }
+.crew-card b em,.crew-status b small {
+  color:#e8bd6c;
+  background:#302615;
+  border-radius:0;
+}
+.lobby-actions { margin-top: 15px; }
+.lobby-actions .primary-action:disabled {
+  color: #8f8c85!important;
+  background: #292b29!important;
+  border-color: #4b4e4a!important;
+  box-shadow: none!important;
+}
+.agenda-preview { padding: 23px; }
+.agenda-preview h2 { margin: 9px 0; }
+.agenda-preview p,.agenda-preview li { color: #c5c2ba; font-size: .86rem; }
+
+/* Readability in private and social surfaces */
+.secret-panel>p:not(.eyebrow) { color: #d0cdc5; font-size: .91rem; }
+.secret-panel>div { color: #f0dfbd; font-size: .9rem; line-height: 1.55; }
+.secret-panel>small { color: #b8b7b0; font-size: .74rem; }
+.secret-panel h3 { font-size: .7rem; letter-spacing: .08em; }
+.crew-status b { font-size: .82rem; }
+.crew-status b small { font-size: .63rem; }
+.chat-panel summary>span { color: #e8e2d8; font-size: .72rem; letter-spacing: .08em; }
+.chat-panel summary small { color: #b5b4ad; font-size: .68rem; }
+.chat-empty,.system-message { color: #aeadA7; font-size: .72rem; }
+.chat-message b { color: #e5b35e; font-size: .72rem; }
+.chat-message p { color: #f0ede6; font-size: .82rem; line-height: 1.5; }
+.system-message time,.message-meta time { color: #aaa9a2; font-size: .64rem; }
+.message-actions button { color: #c2c1ba; }
+.message-actions button { border-color:#555a56; background:#151716; }
+.chat-form small { color: #9d9e98; font-size: .6rem; }
+.chat-feed { scrollbar-color:#8a692f transparent; }
+.chat-form button:hover { background:#7b2529; }
+.waiting i { background:var(--amber); box-shadow:0 0 11px #e39a3266; }
+
+/* Gameplay hierarchy */
+.play-layout { grid-template-columns: minmax(0,1.12fr) minmax(500px,.88fr); }
+.crisis-heading h1 { font-size: clamp(2.75rem,4vw,4.6rem); }
+.crisis-panel blockquote { color: #e1ddd5; }
+.instruction { color: #bbb9b2; }
+.option-card p { color: #c4c1ba; font-size: .86rem; line-height: 1.4; }
+.effect-list span { font-size: .76rem; }
+.vote-locked { color: #d0c7b5; }
+.resolution>p:not(.eyebrow) { color: #d0cdc5; }
+.resource-delta-grid span { color: #cfccc4; }
+.score-row .agenda-reveal p { color: #c9c6be; font-size: .8rem; }
+.agenda-reveal small { color: #afaea8; font-size: .72rem; }
+.score-row h3 small { color:var(--amber); }
+
+@media(max-width:1220px) and (min-width:761px) {
+  .crew-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .crew-card { min-height: 128px; }
+}
+
+@media(max-width:1050px) {
+  .entry-grid { padding-top: 28px; }
+  .mission-copy h1 { font-size: clamp(3.15rem,9vw,5.1rem); }
+  .mission-copy>.ship-schematic { max-width: 760px; }
+}
+
+@media(max-width:760px) {
+  .entry-grid { grid-template-columns:minmax(0,1fr); gap: 24px; padding-top: 25px; }
+  .mission-copy h1 { font-size: clamp(3rem,13vw,4.2rem); }
+  .mission-copy h1 em { white-space: normal; }
+  .mission-copy>p:not(.eyebrow) { font-size: .95rem; }
+  .ship-asset { margin: 34px 7px 19px; }
+  .ship-callout { display: none; }
+  .lobby-layout { grid-template-columns:minmax(0,1fr); }
+  .lobby-main { padding: 22px 17px; }
+  .large-code { width: 100%; min-width: 0; }
+  .crew-grid { grid-template-columns: 1fr; }
+  .crew-card { min-height: 96px; display:grid; grid-template-columns:42px 1fr auto; align-items:center; }
+  .crew-card:before { grid-column:1/-1; position:static; }
+  .crew-card>span:first-of-type { grid-row:2; }
+  .crew-card>div { grid-row:2; }
+  .crew-card .ready-badge { grid-row:2; margin:0; }
+  .crew-card>svg { top: 12px; }
+  .computer-picker>div:last-child { grid-template-columns:1fr 1fr; }
+  .play-layout { grid-template-columns:minmax(0,1fr); grid-template-areas:"ship" "crisis" "lower"; }
+  .play-layout>.ship-schematic { max-height:none; }
+}
+
+@media(max-width:480px) {
+  .entry-panel { padding: 19px 16px; }
+  .mission-facts { gap: 6px; }
+  .mission-facts span { padding: 7px 8px; }
+  .resource-grid { grid-template-columns:1fr 1fr; }
+  .resource>div:first-child { flex-wrap:wrap; }
+  .resource b { min-width:fit-content; }
+  .computer-picker>div:last-child { grid-template-columns:1fr; }
+  .option-card { grid-template-columns:40px 1fr; }
+  .option-card p { font-size:.82rem; }
+}
